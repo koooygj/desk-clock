@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; background: #000; color: #fff; }
   body {
     font-family: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
@@ -45,9 +46,50 @@
   .cell .p { font-size: 3.4vw; color: #6cb6ff; font-variant-numeric: tabular-nums; }
   .cell.now .h { color: #fff; font-weight: 600; }
   .msg { grid-column: 1 / -1; text-align: center; color: #666; font-size: 3.6vw; }
+
+  /* 앱(APK)에서만: 위쪽 알림 아이콘 + 배터리 */
+  .status {
+    position: fixed; left: 0; right: 0;
+    top: calc(env(safe-area-inset-top) + 14px);
+    padding: 0 20px; display: flex; justify-content: space-between; align-items: center;
+    color: #aaa; font-size: 3.8vw;
+  }
+  .notifs { display: flex; gap: 2.2vw; align-items: center; min-height: 5vw; }
+  .notifs img { width: 4.6vw; height: 4.6vw; opacity: .85; }
+  .batt { display: flex; align-items: center; gap: 1.6vw; font-variant-numeric: tabular-nums; }
+  .batt .shell { width: 7vw; height: 3.6vw; border: 1.5px solid #aaa; border-radius: 3px; padding: 1.5px; position: relative; }
+  .batt .shell::after { content: ""; position: absolute; right: -4px; top: 30%; width: 2px; height: 40%; background: #aaa; border-radius: 1px; }
+  .batt .fill { height: 100%; background: #ddd; border-radius: 1px; }
+  .batt.low .fill { background: #ff6b6b; }
+  .batt.charging .fill { background: #5fd38d; }
+
+  /* 야간 모드: 전체를 어둡게 */
+  body.night .clock, body.night .weather, body.night .status { opacity: .35; }
+
+  /* 설정 (시계를 길게 누르면 열림) */
+  .panel {
+    position: fixed; inset: 0; background: rgba(0,0,0,.92);
+    display: flex; flex-direction: column; justify-content: center; gap: 3vh;
+    padding: 0 8vw; font-size: 4.4vw; z-index: 10;
+  }
+  .panel h2 { font-size: 6vw; font-weight: 500; margin-bottom: 1vh; }
+  .opt { display: flex; justify-content: space-between; align-items: center; gap: 4vw; border-bottom: 1px solid #222; padding-bottom: 2.4vh; }
+  .opt small { display: block; color: #777; font-size: 3.4vw; margin-top: .6vh; }
+  .panel button, .panel select {
+    background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 8px;
+    font-size: 4vw; padding: 1.4vh 3.4vw; font-family: inherit;
+  }
+  .panel button.on { background: #fff; color: #000; border-color: #fff; }
+  .panel .close { align-self: center; margin-top: 2vh; padding: 1.4vh 10vw; }
+  .hint { color: #555; font-size: 3.2vw; text-align: center; }
 </style>
 </head>
 <body>
+  <div class="status" id="status" hidden>
+    <div class="notifs" id="notifs"></div>
+    <div class="batt" id="batt"><span id="battPct"></span><div class="shell"><div class="fill" id="battFill"></div></div></div>
+  </div>
+
   <section class="clock" id="clock">
     <div class="date" id="date"></div>
     <div class="time" id="time"></div>
@@ -58,6 +100,28 @@
     <div class="loc" id="loc">위치 확인 중…</div>
     <div class="rows" id="rows"><div class="msg">날씨 불러오는 중…</div></div>
   </section>
+
+  <div class="panel" id="panel" hidden>
+    <h2>설정</h2>
+    <div class="opt">
+      <div>야간 모드<small>정해진 시간에 화면을 어둡게</small></div>
+      <button id="nightBtn"></button>
+    </div>
+    <div class="opt">
+      <div>야간 시간</div>
+      <div><select id="nightFrom"></select> ~ <select id="nightTo"></select></div>
+    </div>
+    <div class="opt app-only">
+      <div>알림 아이콘 표시<small>알림 접근 권한이 필요해요</small></div>
+      <button id="notifBtn"></button>
+    </div>
+    <div class="opt app-only">
+      <div>충전 시 자동 실행<small>알림 접근 + 다른 앱 위에 표시 권한 필요</small></div>
+      <button id="autoBtn"></button>
+    </div>
+    <button class="close" id="closeBtn">닫기</button>
+    <div class="hint">시계를 길게 누르면 이 화면이 열려요</div>
+  </div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -180,6 +244,88 @@ document.addEventListener('visibilitychange', () => {
 $('clock').addEventListener('click', keepAwake);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- 설정 저장 ---------- */
+const PREF_KEY = 'clock_prefs';
+let prefs = { night: true, nightFrom: 22, nightTo: 7 };
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY)) || {}); } catch (e) {}
+const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
+
+/* ---------- 야간 모드 ---------- */
+let wasNight = null;
+function applyNight() {
+  const h = new Date().getHours();
+  const { nightFrom: f, nightTo: t } = prefs;
+  const inRange = f === t ? false : (f < t ? (h >= f && h < t) : (h >= f || h < t));
+  const night = prefs.night && inRange;
+  if (night === wasNight) return;
+  wasNight = night;
+  document.body.classList.toggle('night', night);
+  if (window.Android) Android.setBrightness(night ? 0.02 : -1);
+}
+applyNight();
+setInterval(applyNight, 30 * 1000);
+
+/* ---------- 앱(APK) 연동: 배터리, 알림 아이콘 ---------- */
+const IS_APP = !!window.Android;
+if (IS_APP) $('status').hidden = false;
+document.querySelectorAll('.app-only').forEach(el => el.hidden = !IS_APP);
+
+window.nativeBattery = (level, charging) => {
+  $('battPct').textContent = (charging ? '⚡' : '') + level + '%';
+  $('battFill').style.width = level + '%';
+  $('batt').classList.toggle('charging', charging);
+  $('batt').classList.toggle('low', !charging && level <= 15);
+};
+window.nativeNotifs = icons => {
+  $('notifs').innerHTML = '';
+  icons.slice(0, 8).forEach(src => {
+    const img = document.createElement('img');
+    img.src = src; img.alt = '';
+    $('notifs').appendChild(img);
+  });
+};
+
+/* ---------- 설정 화면 ---------- */
+for (let h = 0; h < 24; h++) {
+  $('nightFrom').add(new Option(`${pad(h)}시`, h));
+  $('nightTo').add(new Option(`${pad(h)}시`, h));
+}
+function renderPanel() {
+  $('nightBtn').textContent = prefs.night ? '켜짐' : '꺼짐';
+  $('nightBtn').classList.toggle('on', prefs.night);
+  $('nightFrom').value = prefs.nightFrom;
+  $('nightTo').value = prefs.nightTo;
+  if (IS_APP) {
+    const n = Android.hasNotifAccess();
+    $('notifBtn').textContent = n ? '허용됨' : '허용하기';
+    $('notifBtn').classList.toggle('on', n);
+    const a = Android.getAutoLaunch() && n && Android.canOverlay();
+    $('autoBtn').textContent = a ? '켜짐' : '꺼짐';
+    $('autoBtn').classList.toggle('on', a);
+  }
+}
+$('nightBtn').onclick = () => { prefs.night = !prefs.night; savePrefs(); wasNight = null; applyNight(); renderPanel(); };
+$('nightFrom').onchange = e => { prefs.nightFrom = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
+$('nightTo').onchange = e => { prefs.nightTo = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
+$('notifBtn').onclick = () => { if (!Android.hasNotifAccess()) Android.openNotifAccess(); };
+$('autoBtn').onclick = () => {
+  if (!Android.hasNotifAccess()) { Android.setAutoLaunch(true); Android.openNotifAccess(); return; }
+  if (!Android.canOverlay()) { Android.setAutoLaunch(true); Android.openOverlay(); return; }
+  Android.setAutoLaunch(!Android.getAutoLaunch());
+  renderPanel();
+};
+$('closeBtn').onclick = () => { $('panel').hidden = true; };
+
+let pressTimer = null;
+$('clock').addEventListener('pointerdown', () => {
+  pressTimer = setTimeout(() => { renderPanel(); $('panel').hidden = false; }, 600);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+  $('clock').addEventListener(ev, () => clearTimeout(pressTimer)));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !$('panel').hidden) renderPanel();
+});
 </script>
 </body>
 </html>

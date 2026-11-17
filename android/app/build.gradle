@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.deskclock.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.deskclock.app'
+        minSdk 30
+        targetSdk 34
+        versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+        versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
+    }
+
+    // 개인 설치용 서명 키. 매번 같은 키로 서명해야 새 APK가 기존 앱 위에 덮어 설치됩니다.
+    signingConfigs {
+        release {
+            storeFile file('release.keystore')
+            storePassword 'deskclock'
+            keyAlias 'deskclock'
+            keyPassword 'deskclock'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}
