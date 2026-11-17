@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <title>탁상시계</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; background: #000; color: #fff; }
@@ -166,7 +169,7 @@ setInterval(() => {
   if (m === 1 || m === 31) loadWeather();
 }, 60 * 1000);
 
-/* ---------- 화면 꺼짐 방지 + 탭하면 전체화면 ---------- */
+/* ---------- 화면 꺼짐 방지 ---------- */
 let lock = null;
 async function keepAwake() {
   try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
@@ -175,11 +178,9 @@ keepAwake();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { keepAwake(); loadWeather(); }
 });
-$('clock').addEventListener('click', () => {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
-  else document.exitFullscreen?.();
-  keepAwake();
-});
+$('clock').addEventListener('click', keepAwake);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>
