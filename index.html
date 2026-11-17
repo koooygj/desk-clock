@@ -30,21 +30,21 @@
   .sec { font-size: 9vw; color: #888; font-variant-numeric: tabular-nums; margin-top: 1vh; }
   .ampm { font-size: 6vw; color: #aaa; margin-top: 1vh; }
 
-  .weather { padding-bottom: 5vh; }
-  .loc { font-size: 4.2vw; color: #888; text-align: center; margin-bottom: 2vh; }
-  .rows { border-top: 1px solid #222; }
-  .row {
-    display: grid; grid-template-columns: 22% 14% 1fr 22% 20%;
-    align-items: center; padding: 2.2vh 0; border-bottom: 1px solid #222;
-    font-size: 5vw;
+  /* 날씨: 화면 아래에 작게 고정, 시계가 화면 정중앙에 오도록 흐름에서 뺌 */
+  .weather {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom) + 4vh);
+    padding: 0 20px;
   }
-  .row .h { color: #bbb; }
-  .row .ic { font-size: 7vw; text-align: center; }
-  .row .d { color: #ccc; font-size: 4.4vw; }
-  .row .t { text-align: right; font-variant-numeric: tabular-nums; }
-  .row .p { text-align: right; color: #6cb6ff; font-size: 4.2vw; }
-  .row.now .h { color: #fff; font-weight: 600; }
-  .msg { text-align: center; color: #888; font-size: 4.2vw; padding: 3vh 0; }
+  .loc { font-size: 3.6vw; color: #666; text-align: center; margin-bottom: 1.6vh; }
+  .rows { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2vw; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: .6vh; }
+  .cell .h { font-size: 3.6vw; color: #888; }
+  .cell .ic { font-size: 7vw; line-height: 1.2; }
+  .cell .t { font-size: 5vw; font-variant-numeric: tabular-nums; }
+  .cell .p { font-size: 3.4vw; color: #6cb6ff; font-variant-numeric: tabular-nums; }
+  .cell.now .h { color: #fff; font-weight: 600; }
+  .msg { grid-column: 1 / -1; text-align: center; color: #666; font-size: 3.6vw; }
 </style>
 </head>
 <body>
@@ -148,12 +148,11 @@ async function loadWeather() {
       const [icon0, desc] = WMO[code] || ['❔', '-'];
       const icon = (!h.is_day[idx] && NIGHT[code]) ? NIGHT[code] : icon0;
       const label = k === 0 ? '지금' : `${pad(hour)}시`;
-      html += `<div class="row${k === 0 ? ' now' : ''}">
+      html += `<div class="cell${k === 0 ? ' now' : ''}" title="${desc}">
         <span class="h">${label}</span>
         <span class="ic">${icon}</span>
-        <span class="d">${desc}</span>
         <span class="t">${Math.round(h.temperature_2m[idx])}°</span>
-        <span class="p">☂ ${h.precipitation_probability[idx] ?? 0}%</span>
+        <span class="p">${h.precipitation_probability[idx] ?? 0}%</span>
       </div>`;
     }
     $('rows').innerHTML = html;
