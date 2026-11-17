@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>탁상시계</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; color: #fff; }
+  body {
+    font-family: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+    user-select: none; overflow: hidden;
+  }
+  .clock {
+    flex: 1; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+  }
+  .date { font-size: 7vw; color: #ccc; letter-spacing: .02em; }
+  .time {
+    font-size: 27vw; font-weight: 200; line-height: 1;
+    font-variant-numeric: tabular-nums; margin-top: 2vh;
+  }
+  .sec { font-size: 9vw; color: #888; font-variant-numeric: tabular-nums; margin-top: 1vh; }
+  .ampm { font-size: 6vw; color: #aaa; margin-top: 1vh; }
+
+  .weather { padding-bottom: 5vh; }
+  .loc { font-size: 4.2vw; color: #888; text-align: center; margin-bottom: 2vh; }
+  .rows { border-top: 1px solid #222; }
+  .row {
+    display: grid; grid-template-columns: 22% 14% 1fr 22% 20%;
+    align-items: center; padding: 2.2vh 0; border-bottom: 1px solid #222;
+    font-size: 5vw;
+  }
+  .row .h { color: #bbb; }
+  .row .ic { font-size: 7vw; text-align: center; }
+  .row .d { color: #ccc; font-size: 4.4vw; }
+  .row .t { text-align: right; font-variant-numeric: tabular-nums; }
+  .row .p { text-align: right; color: #6cb6ff; font-size: 4.2vw; }
+  .row.now .h { color: #fff; font-weight: 600; }
+  .msg { text-align: center; color: #888; font-size: 4.2vw; padding: 3vh 0; }
+</style>
+</head>
+<body>
+  <section class="clock" id="clock">
+    <div class="date" id="date"></div>
+    <div class="time" id="time"></div>
+    <div class="sec" id="sec"></div>
+  </section>
+
+  <section class="weather">
+    <div class="loc" id="loc">위치 확인 중…</div>
+    <div class="rows" id="rows"><div class="msg">날씨 불러오는 중…</div></div>
+  </section>
+
+<script>
+const $ = id => document.getElementById(id);
+const DAYS = ['일','월','화','수','목','금','토'];
+const pad = n => String(n).padStart(2, '0');
+
+/* ---------- 시계 ---------- */
+function tick() {
+  const d = new Date();
+  $('date').textContent = `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DAYS[d.getDay()]})`;
+  $('time').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  $('sec').textContent = pad(d.getSeconds());
+}
+tick();
+setInterval(tick, 1000);
+
+/* ---------- 날씨 ---------- */
+const WMO = {
+  0:['☀️','맑음'], 1:['🌤️','대체로 맑음'], 2:['⛅','구름 조금'], 3:['☁️','흐림'],
+  45:['🌫️','안개'], 48:['🌫️','안개'],
+  51:['🌦️','약한 이슬비'], 53:['🌦️','이슬비'], 55:['🌧️','강한 이슬비'],
+  56:['🌧️','어는 이슬비'], 57:['🌧️','어는 이슬비'],
+  61:['🌧️','약한 비'], 63:['🌧️','비'], 65:['🌧️','강한 비'],
+  66:['🌧️','어는 비'], 67:['🌧️','어는 비'],
+  71:['🌨️','약한 눈'], 73:['🌨️','눈'], 75:['❄️','많은 눈'], 77:['🌨️','싸락눈'],
+  80:['🌦️','소나기'], 81:['🌧️','소나기'], 82:['⛈️','강한 소나기'],
+  85:['🌨️','눈 소나기'], 86:['❄️','강한 눈 소나기'],
+  95:['⛈️','뇌우'], 96:['⛈️','뇌우·우박'], 99:['⛈️','강한 뇌우']
+};
+const NIGHT = { 0:'🌙', 1:'🌙', 2:'☁️' };
+
+let coords = null;
+try { coords = JSON.parse(localStorage.getItem('clock_coords')); } catch (e) {}
+
+function getPosition() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(coords);
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        coords = { lat: p.coords.latitude, lon: p.coords.longitude };
+        try { localStorage.setItem('clock_coords', JSON.stringify(coords)); } catch (e) {}
+        resolve(coords);
+      },
+      () => resolve(coords),           // 실패 시 마지막으로 저장된 위치 사용
+      { timeout: 15000, maximumAge: 30 * 60 * 1000 }
+    );
+  });
+}
+
+async function loadPlaceName(c) {
+  try {
+    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${c.lat}&longitude=${c.lon}&localityLanguage=ko`);
+    const j = await r.json();
+    const parts = [j.principalSubdivision, j.city, j.locality].filter(Boolean);
+    const name = [...new Set(parts)].join(' ');
+    if (name) $('loc').textContent = name;
+  } catch (e) {}
+}
+
+async function loadWeather() {
+  let c = await getPosition();
+  if (!c) {
+    c = { lat: 37.5665, lon: 126.9780 }; // 위치 권한이 없으면 서울 기준
+    $('loc').textContent = '서울 (위치 권한 없음)';
+  } else {
+    if ($('loc').textContent.includes('확인')) $('loc').textContent = '현재 위치';
+    loadPlaceName(c);
+  }
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
+      + `&hourly=temperature_2m,weather_code,precipitation_probability,is_day`
+      + `&timezone=auto&forecast_days=2`;
+    const j = await (await fetch(url)).json();
+    const h = j.hourly;
+
+    const now = new Date();
+    const key = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:00`;
+    let i = h.time.indexOf(key);
+    if (i < 0) i = 0;
+
+    let html = '';
+    for (let k = 0; k < 5; k++) {
+      const idx = i + k;
+      if (idx >= h.time.length) break;
+      const hour = parseInt(h.time[idx].slice(11, 13), 10);
+      const code = h.weather_code[idx];
+      const [icon0, desc] = WMO[code] || ['❔', '-'];
+      const icon = (!h.is_day[idx] && NIGHT[code]) ? NIGHT[code] : icon0;
+      const label = k === 0 ? '지금' : `${pad(hour)}시`;
+      html += `<div class="row${k === 0 ? ' now' : ''}">
+        <span class="h">${label}</span>
+        <span class="ic">${icon}</span>
+        <span class="d">${desc}</span>
+        <span class="t">${Math.round(h.temperature_2m[idx])}°</span>
+        <span class="p">☂ ${h.precipitation_probability[idx] ?? 0}%</span>
+      </div>`;
+    }
+    $('rows').innerHTML = html;
+  } catch (e) {
+    $('rows').innerHTML = '<div class="msg">날씨를 불러오지 못했어요. 잠시 후 다시 시도합니다.</div>';
+  }
+}
+
+loadWeather();
+// 매 정시 직후 + 30분마다 갱신
+setInterval(() => {
+  const m = new Date().getMinutes();
+  if (m === 1 || m === 31) loadWeather();
+}, 60 * 1000);
+
+/* ---------- 화면 꺼짐 방지 + 탭하면 전체화면 ---------- */
+let lock = null;
+async function keepAwake() {
+  try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+keepAwake();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { keepAwake(); loadWeather(); }
+});
+$('clock').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+  else document.exitFullscreen?.();
+  keepAwake();
+});
+</script>
+</body>
+</html>
