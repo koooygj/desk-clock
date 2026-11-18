@@ -190,6 +190,15 @@
       <button id="notifBtn"></button>
     </div>
     <div class="opt app-only">
+      <div>미디어 표시 끄기<small>재생이 멈춘 뒤 이 시간이 지나면 숨겨요</small></div>
+      <select id="mediaHide">
+        <option value="30">30초</option>
+        <option value="60">1분</option>
+        <option value="90">1분 30초</option>
+        <option value="120">2분</option>
+      </select>
+    </div>
+    <div class="opt app-only">
       <div>충전 시 자동 실행<small>알림 접근 + 다른 앱 위에 표시 권한 필요</small></div>
       <button id="autoBtn"></button>
     </div>
@@ -352,7 +361,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 /* ---------- 설정 저장 ---------- */
 const PREF_KEY = 'clock_prefs';
-let prefs = { night: true, nightFrom: 22, nightTo: 7, bg: '#000000' };
+let prefs = { night: true, nightFrom: 22, nightTo: 7, bg: '#000000', mediaHide: 60 };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY)) || {}); } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 
@@ -441,9 +450,22 @@ window.nativeNotifs = icons => { lastIcons = icons || []; renderNotifs(); };
 renderNotifs();
 
 const PLAY = 'M7 4v16l13-8z', PAUSE = 'M6 4h4v16H6zM14 4h4v16h-4z';
+/* 재생이 멈추면 설정한 시간(prefs.mediaHide초) 뒤에 카드를 숨김 */
+let lastMedia = null, pausedSince = null, hideTimer = null;
+function updateMediaVisibility() {
+  clearTimeout(hideTimer);
+  if (!lastMedia || !lastMedia.title) { $('media').hidden = true; return; }
+  if (lastMedia.playing) { $('media').hidden = false; return; }
+  const left = prefs.mediaHide * 1000 - (Date.now() - pausedSince);
+  $('media').hidden = left <= 0;
+  if (left > 0) hideTimer = setTimeout(updateMediaVisibility, left);
+}
 window.nativeMedia = m => {
-  if (!m || !m.title) { $('media').hidden = true; return; }
-  $('media').hidden = false;
+  lastMedia = m;
+  if (!m || m.playing) pausedSince = null;
+  else if (pausedSince === null) pausedSince = Date.now();
+  updateMediaVisibility();
+  if (!m || !m.title) return;
   $('mTitle').textContent = m.title;
   $('mArtist').textContent = [m.artist, m.app].filter(Boolean).join(' · ');
   if (m.art !== undefined && $('mArt').getAttribute('src') !== m.art) $('mArt').setAttribute('src', m.art || '');
@@ -466,6 +488,7 @@ function renderPanel() {
   $('nightBtn').classList.toggle('on', prefs.night);
   $('nightFrom').value = prefs.nightFrom;
   $('nightTo').value = prefs.nightTo;
+  $('mediaHide').value = prefs.mediaHide;
   if (IS_APP) {
     const n = Android.hasNotifAccess();
     $('notifBtn').textContent = n ? '허용됨' : '허용하기';
@@ -478,6 +501,7 @@ function renderPanel() {
 $('nightBtn').onclick = () => { prefs.night = !prefs.night; savePrefs(); wasNight = null; applyNight(); renderPanel(); };
 $('nightFrom').onchange = e => { prefs.nightFrom = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
 $('nightTo').onchange = e => { prefs.nightTo = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
+$('mediaHide').onchange = e => { prefs.mediaHide = +e.target.value; savePrefs(); updateMediaVisibility(); };
 $('notifBtn').onclick = () => { if (!Android.hasNotifAccess()) Android.openNotifAccess(); };
 $('autoBtn').onclick = () => {
   if (!Android.hasNotifAccess()) { Android.setAutoLaunch(true); Android.openNotifAccess(); return; }
