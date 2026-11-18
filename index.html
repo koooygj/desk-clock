@@ -12,16 +12,18 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   [hidden] { display: none !important; }
-  html, body { height: 100%; background: #000; color: #fff; }
+  html, body { height: 100%; background: var(--bg, #000); color: #fff; }
   body {
     font-family: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
     display: flex; flex-direction: column;
     padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
     user-select: none; overflow: hidden;
   }
+  /* 시계는 화면 위쪽 1/5 지점부터 시작 (아래쪽은 미디어 + 날씨 자리) */
   .clock {
     flex: 1; display: flex; flex-direction: column;
-    justify-content: center; align-items: center; text-align: center;
+    justify-content: flex-start; align-items: center; text-align: center;
+    padding-top: 17vh;
   }
   .date { font-size: 7vw; color: #ccc; letter-spacing: .02em; }
   .time {
@@ -52,10 +54,19 @@
     position: fixed; left: 0; right: 0;
     top: calc(env(safe-area-inset-top) + 14px);
     padding: 0 20px; display: flex; justify-content: space-between; align-items: center;
-    color: #aaa; font-size: 3.8vw;
+    color: #aaa; font-size: 3.8vw; z-index: 5;
   }
   .notifs { display: flex; gap: 2.2vw; align-items: center; min-height: 5vw; }
   .notifs img { width: 4.6vw; height: 4.6vw; opacity: .85; }
+  .right { display: flex; align-items: center; gap: 4vw; }
+  .gear {
+    background: none; border: 0; color: #777; padding: 1vw; display: flex;
+  }
+  .gear svg { width: 5.4vw; height: 5.4vw; fill: currentColor; }
+  .nhint {
+    background: none; border: 1px solid #333; border-radius: 999px; color: #888;
+    font-size: 3.2vw; padding: .6vh 3vw; font-family: inherit;
+  }
   .batt { display: flex; align-items: center; gap: 1.6vw; font-variant-numeric: tabular-nums; }
   .batt .shell { width: 7vw; height: 3.6vw; border: 1.5px solid #aaa; border-radius: 3px; padding: 1.5px; position: relative; }
   .batt .shell::after { content: ""; position: absolute; right: -4px; top: 30%; width: 2px; height: 40%; background: #aaa; border-radius: 1px; }
@@ -63,14 +74,38 @@
   .batt.low .fill { background: #ff6b6b; }
   .batt.charging .fill { background: #5fd38d; }
 
+  /* 현재 재생 중인 미디어 (앱에서만) */
+  .media {
+    display: flex; align-items: center; gap: 3.6vw;
+    background: rgba(255,255,255,.06); border-radius: 14px;
+    padding: 2.6vw; margin-bottom: 4vh;
+  }
+  .media img { width: 14vw; height: 14vw; border-radius: 8px; object-fit: cover; background: #222; flex: none; }
+  .media img[src=""] { visibility: hidden; }
+  .mtext { flex: 1; min-width: 0; }
+  .mt { font-size: 4.2vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ma { font-size: 3.4vw; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .4vh; }
+  .mctl { display: flex; gap: 1vw; flex: none; }
+  .mctl button { background: none; border: 0; color: #ddd; padding: 1.6vw; display: flex; }
+  .mctl svg { width: 6.4vw; height: 6.4vw; fill: currentColor; }
+  .mctl #mPlay svg { width: 7.6vw; height: 7.6vw; }
+
   /* 야간 모드: 전체를 어둡게 */
   body.night .clock, body.night .weather, body.night .status { opacity: .35; }
 
-  /* 설정 (시계를 길게 누르면 열림) */
+  .swatches { display: flex; flex-wrap: wrap; gap: 2.4vw; justify-content: flex-end; }
+  .opt > div:first-child { flex: none; white-space: nowrap; }
+  .opt > div:first-child small { white-space: normal; }
+  .sw { width: 8vw; height: 8vw; border-radius: 50%; border: 2px solid #444; padding: 0 !important; }
+  .sw.sel { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
+  .sw-custom { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
+  .sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+
+  /* 설정 (오른쪽 위 톱니바퀴 또는 시계 길게 누르기) */
   .panel {
-    position: fixed; inset: 0; background: rgba(0,0,0,.92);
-    display: flex; flex-direction: column; justify-content: center; gap: 3vh;
-    padding: 0 8vw; font-size: 4.4vw; z-index: 10;
+    position: fixed; inset: 0; background: rgba(0,0,0,.95);
+    display: flex; flex-direction: column; gap: 3vh; overflow-y: auto;
+    padding: calc(env(safe-area-inset-top) + 8vh) 8vw 6vh; font-size: 4.4vw; z-index: 10;
   }
   .panel h2 { font-size: 6vw; font-weight: 500; margin-bottom: 1vh; }
   .opt { display: flex; justify-content: space-between; align-items: center; gap: 4vw; border-bottom: 1px solid #222; padding-bottom: 2.4vh; }
@@ -85,9 +120,12 @@
 </style>
 </head>
 <body>
-  <div class="status" id="status" hidden>
+  <div class="status" id="status">
     <div class="notifs" id="notifs"></div>
-    <div class="batt" id="batt"><span id="battPct"></span><div class="shell"><div class="fill" id="battFill"></div></div></div>
+    <div class="right">
+      <button class="gear" id="gearBtn" aria-label="설정"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3h-4l-.4 2.7a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1L11 21h4l.4-2.7a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+      <div class="batt" id="batt" hidden><span id="battPct"></span><div class="shell"><div class="fill" id="battFill"></div></div></div>
+    </div>
   </div>
 
   <section class="clock" id="clock">
@@ -97,12 +135,25 @@
   </section>
 
   <section class="weather">
+    <div class="media" id="media" hidden>
+      <img id="mArt" src="" alt="">
+      <div class="mtext"><div class="mt" id="mTitle"></div><div class="ma" id="mArtist"></div></div>
+      <div class="mctl">
+        <button id="mPrev" aria-label="이전 곡"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button id="mPlay" aria-label="재생 또는 일시정지"><svg viewBox="0 0 24 24"><path id="mPlayPath" d="M7 4v16l13-8z"/></svg></button>
+        <button id="mNext" aria-label="다음 곡"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+      </div>
+    </div>
     <div class="loc" id="loc">위치 확인 중…</div>
     <div class="rows" id="rows"><div class="msg">날씨 불러오는 중…</div></div>
   </section>
 
   <div class="panel" id="panel" hidden>
     <h2>설정</h2>
+    <div class="opt">
+      <div>배경 색상</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
     <div class="opt">
       <div>야간 모드<small>정해진 시간에 화면을 어둡게</small></div>
       <button id="nightBtn"></button>
@@ -112,7 +163,7 @@
       <div><select id="nightFrom"></select> ~ <select id="nightTo"></select></div>
     </div>
     <div class="opt app-only">
-      <div>알림 아이콘 표시<small>알림 접근 권한이 필요해요</small></div>
+      <div>알림 아이콘 · 재생 중인 미디어<small>알림 접근 권한이 필요해요</small></div>
       <button id="notifBtn"></button>
     </div>
     <div class="opt app-only">
@@ -120,7 +171,7 @@
       <button id="autoBtn"></button>
     </div>
     <button class="close" id="closeBtn">닫기</button>
-    <div class="hint">시계를 길게 누르면 이 화면이 열려요</div>
+    <div class="hint">오른쪽 위 톱니바퀴나 시계를 길게 눌러도 열려요</div>
   </div>
 
 <script>
@@ -278,7 +329,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 /* ---------- 설정 저장 ---------- */
 const PREF_KEY = 'clock_prefs';
-let prefs = { night: true, nightFrom: 22, nightTo: 7 };
+let prefs = { night: true, nightFrom: 22, nightTo: 7, bg: '#000000' };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY)) || {}); } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 
@@ -297,9 +348,38 @@ function applyNight() {
 applyNight();
 setInterval(applyNight, 30 * 1000);
 
-/* ---------- 앱(APK) 연동: 배터리, 알림 아이콘 ---------- */
+/* ---------- 배경 색상 ---------- */
+const BG_COLORS = ['#000000', '#101418', '#0b1a2e', '#0f2018', '#2a1016', '#1e1530', '#2b2118'];
+function applyBg() {
+  document.documentElement.style.setProperty('--bg', prefs.bg);
+  if (window.Android && Android.setBg) Android.setBg(prefs.bg);
+}
+applyBg();
+function renderSwatches() {
+  const box = $('swatches');
+  box.replaceChildren();
+  BG_COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'sw' + (prefs.bg === c ? ' sel' : '');
+    b.style.background = c;
+    b.setAttribute('aria-label', '배경 ' + c);
+    b.onclick = () => { prefs.bg = c; savePrefs(); applyBg(); renderSwatches(); };
+    box.appendChild(b);
+  });
+  const custom = document.createElement('label');
+  custom.className = 'sw sw-custom' + (BG_COLORS.includes(prefs.bg) ? '' : ' sel');
+  custom.setAttribute('aria-label', '직접 고르기');
+  const input = document.createElement('input');
+  input.type = 'color'; input.value = prefs.bg;
+  input.oninput = e => { prefs.bg = e.target.value; savePrefs(); applyBg(); };
+  input.onchange = () => renderSwatches();
+  custom.appendChild(input);
+  box.appendChild(custom);
+}
+
+/* ---------- 앱(APK) 연동: 배터리, 알림 아이콘, 미디어 ---------- */
 const IS_APP = !!window.Android;
-if (IS_APP) $('status').hidden = false;
+$('batt').hidden = !IS_APP;
 document.querySelectorAll('.app-only').forEach(el => el.hidden = !IS_APP);
 
 window.nativeBattery = (level, charging) => {
@@ -308,21 +388,50 @@ window.nativeBattery = (level, charging) => {
   $('batt').classList.toggle('charging', charging);
   $('batt').classList.toggle('low', !charging && level <= 15);
 };
-window.nativeNotifs = icons => {
-  $('notifs').innerHTML = '';
-  icons.slice(0, 8).forEach(src => {
+let lastIcons = [];
+function renderNotifs() {
+  const box = $('notifs');
+  box.replaceChildren();
+  if (!IS_APP) return;
+  if (!Android.hasNotifAccess()) {
+    const b = document.createElement('button');
+    b.className = 'nhint';
+    b.textContent = '알림 아이콘 켜기';
+    b.onclick = () => Android.openNotifAccess();
+    box.appendChild(b);
+    return;
+  }
+  lastIcons.slice(0, 8).forEach(src => {
     const img = document.createElement('img');
     img.src = src; img.alt = '';
-    $('notifs').appendChild(img);
+    box.appendChild(img);
   });
+}
+window.nativeNotifs = icons => { lastIcons = icons || []; renderNotifs(); };
+renderNotifs();
+
+const PLAY = 'M7 4v16l13-8z', PAUSE = 'M6 4h4v16H6zM14 4h4v16h-4z';
+window.nativeMedia = m => {
+  if (!m || !m.title) { $('media').hidden = true; return; }
+  $('media').hidden = false;
+  $('mTitle').textContent = m.title;
+  $('mArtist').textContent = [m.artist, m.app].filter(Boolean).join(' · ');
+  if (m.art !== undefined && $('mArt').getAttribute('src') !== m.art) $('mArt').setAttribute('src', m.art || '');
+  $('mPlayPath').setAttribute('d', m.playing ? PAUSE : PLAY);
 };
+$('mPrev').onclick = () => Android.mediaAction('prev');
+$('mPlay').onclick = () => Android.mediaAction('toggle');
+$('mNext').onclick = () => Android.mediaAction('next');
 
 /* ---------- 설정 화면 ---------- */
 for (let h = 0; h < 24; h++) {
   $('nightFrom').add(new Option(`${pad(h)}시`, h));
   $('nightTo').add(new Option(`${pad(h)}시`, h));
 }
+function openPanel() { renderPanel(); $('panel').hidden = false; }
+$('gearBtn').onclick = openPanel;
 function renderPanel() {
+  renderSwatches();
   $('nightBtn').textContent = prefs.night ? '켜짐' : '꺼짐';
   $('nightBtn').classList.toggle('on', prefs.night);
   $('nightFrom').value = prefs.nightFrom;
@@ -350,12 +459,14 @@ $('closeBtn').onclick = () => { $('panel').hidden = true; };
 
 let pressTimer = null;
 $('clock').addEventListener('pointerdown', () => {
-  pressTimer = setTimeout(() => { renderPanel(); $('panel').hidden = false; }, 600);
+  pressTimer = setTimeout(openPanel, 600);
 });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
   $('clock').addEventListener(ev, () => clearTimeout(pressTimer)));
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !$('panel').hidden) renderPanel();
+  if (document.visibilityState !== 'visible') return;
+  renderNotifs();
+  if (!$('panel').hidden) renderPanel();
 });
 </script>
 </body>

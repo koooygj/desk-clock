@@ -55,6 +55,8 @@ public class NotifListener extends NotificationListenerService {
     @Override public void onNotificationPosted(StatusBarNotification sbn) { refresh(); }
     @Override public void onNotificationRemoved(StatusBarNotification sbn) { refresh(); }
 
+    static boolean isConnected() { return instance != null; }
+
     static void refresh() {
         MainActivity a = MainActivity.current;
         NotifListener s = instance;

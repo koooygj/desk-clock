@@ -3,12 +3,23 @@ package com.deskclock.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
+import android.os.Handler;
+import android.os.Looper;
+import android.service.notification.NotificationListenerService;
+import android.util.Base64;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
@@ -36,6 +47,8 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -49,6 +62,19 @@ public class MainActivity extends Activity {
     private WebView web;
     private boolean pageReady = false;
     private volatile String lastLoc = "";
+
+    // ---- 현재 재생 중인 미디어 ----
+    private MediaSessionManager msm;
+    private MediaController ctrl;
+    private Bitmap lastArtBmp;
+    private String lastArtStr = "";
+
+    private final MediaController.Callback mediaCb = new MediaController.Callback() {
+        @Override public void onMetadataChanged(MediaMetadata m) { pushMedia(); }
+        @Override public void onPlaybackStateChanged(PlaybackState st) { pushMedia(); }
+        @Override public void onSessionDestroyed() { pickSession(); }
+    };
+    private final MediaSessionManager.OnActiveSessionsChangedListener sessionsCb = list -> pickSession();
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
@@ -150,6 +176,10 @@ public class MainActivity extends Activity {
         hideSystemBars();
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         updateLocation();
+        if (hasNotifAccess(this) && !NotifListener.isConnected()) {
+            NotificationListenerService.requestRebind(new ComponentName(this, NotifListener.class));
+        }
+        startMedia();
         pushState();
     }
 
@@ -157,6 +187,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(batteryReceiver); } catch (Exception ignored) {}
+        stopMedia();
         if (current == this) current = null;
     }
 
@@ -179,7 +210,113 @@ public class MainActivity extends Activity {
     private void pushState() {
         if (!pageReady) return;
         NotifListener.refresh();
+        pushMedia();
+        Intent bat = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (bat != null) batteryReceiver.onReceive(this, bat);
         js("document.dispatchEvent(new Event('visibilitychange'))");
+    }
+
+    private ComponentName listenerName() { return new ComponentName(this, NotifListener.class); }
+
+    private void startMedia() {
+        if (!hasNotifAccess(this)) { pushMedia(); return; }
+        try {
+            msm = getSystemService(MediaSessionManager.class);
+            msm.addOnActiveSessionsChangedListener(sessionsCb, listenerName(), new Handler(Looper.getMainLooper()));
+            pickSession();
+        } catch (SecurityException e) {
+            msm = null;
+            pushMedia();
+        }
+    }
+
+    private void stopMedia() {
+        if (msm != null) {
+            try { msm.removeOnActiveSessionsChangedListener(sessionsCb); } catch (Exception ignored) {}
+            msm = null;
+        }
+        setController(null);
+    }
+
+    /** 재생 중인 세션을 우선, 없으면 가장 최근 세션 */
+    private void pickSession() {
+        List<MediaController> list = Collections.emptyList();
+        if (msm != null) {
+            try { list = msm.getActiveSessions(listenerName()); } catch (SecurityException ignored) {}
+        }
+        MediaController pick = null;
+        for (MediaController c : list) {
+            PlaybackState st = c.getPlaybackState();
+            if (st != null && st.getState() == PlaybackState.STATE_PLAYING) { pick = c; break; }
+        }
+        if (pick == null && !list.isEmpty()) pick = list.get(0);
+        setController(pick);
+    }
+
+    private void setController(MediaController c) {
+        if (ctrl != null) {
+            try { ctrl.unregisterCallback(mediaCb); } catch (Exception ignored) {}
+        }
+        ctrl = c;
+        if (ctrl != null) ctrl.registerCallback(mediaCb, new Handler(Looper.getMainLooper()));
+        pushMedia();
+    }
+
+    private void pushMedia() {
+        MediaMetadata m = ctrl != null ? ctrl.getMetadata() : null;
+        String title = m == null ? null : m.getString(MediaMetadata.METADATA_KEY_TITLE);
+        if (title == null || title.isEmpty()) {
+            if (m != null) title = m.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+        }
+        if (title == null || title.isEmpty()) {
+            js("window.nativeMedia && nativeMedia(null)");
+            return;
+        }
+        String artist = m.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        if (artist == null || artist.isEmpty()) artist = m.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST);
+        if (artist == null || artist.isEmpty()) artist = m.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
+
+        Bitmap art = m.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+        if (art != lastArtBmp) {
+            lastArtBmp = art;
+            lastArtStr = art == null ? "" : toDataUrl(art);
+        }
+
+        String app = "";
+        try {
+            app = getPackageManager().getApplicationLabel(
+                    getPackageManager().getApplicationInfo(ctrl.getPackageName(), 0)).toString();
+        } catch (Exception ignored) {}
+
+        PlaybackState st = ctrl.getPlaybackState();
+        boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
+
+        try {
+            JSONObject o = new JSONObject();
+            o.put("title", title);
+            o.put("artist", artist == null ? "" : artist);
+            o.put("app", app);
+            o.put("art", lastArtStr);
+            o.put("playing", playing);
+            js("window.nativeMedia && nativeMedia(" + o + ")");
+        } catch (Exception ignored) {}
+    }
+
+    private static String toDataUrl(Bitmap b) {
+        try {
+            int size = 192;
+            float scale = Math.min(1f, size / (float) Math.max(b.getWidth(), b.getHeight()));
+            Bitmap s = scale < 1f
+                    ? Bitmap.createScaledBitmap(b, Math.round(b.getWidth() * scale), Math.round(b.getHeight() * scale), true)
+                    : b;
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            s.compress(Bitmap.CompressFormat.JPEG, 85, bos);
+            return "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     void showNotifs(String jsonArray) {
@@ -258,6 +395,31 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setAutoLaunch(boolean on) {
             SharedPreferences.Editor e = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
             e.putBoolean(KEY_AUTO, on).apply();
+        }
+
+        /** 재생 제어: prev, next, toggle */
+        @JavascriptInterface public void mediaAction(final String action) {
+            runOnUiThread(() -> {
+                if (ctrl == null) return;
+                MediaController.TransportControls t = ctrl.getTransportControls();
+                if ("prev".equals(action)) t.skipToPrevious();
+                else if ("next".equals(action)) t.skipToNext();
+                else {
+                    PlaybackState st = ctrl.getPlaybackState();
+                    if (st != null && st.getState() == PlaybackState.STATE_PLAYING) t.pause(); else t.play();
+                }
+            });
+        }
+
+        /** 배경 색상 (#rrggbb) — 화면 로딩 중에도 같은 색이 보이도록 */
+        @JavascriptInterface public void setBg(final String hex) {
+            runOnUiThread(() -> {
+                try {
+                    int c = Color.parseColor(hex);
+                    web.setBackgroundColor(c);
+                    getWindow().setBackgroundDrawable(new ColorDrawable(c));
+                } catch (Exception ignored) {}
+            });
         }
 
         /** 0~1 밝기, 음수면 시스템 밝기로 되돌림 */
