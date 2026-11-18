@@ -302,7 +302,7 @@ function getJSON(url) {
       const id = ++nativeSeq;
       nativePending[id] = { res, rej };
       Android.fetchText(id, url);
-      setTimeout(() => { if (nativePending[id]) { delete nativePending[id]; rej(new Error('응답 시간 초과')); } }, 35000);
+      setTimeout(() => { if (nativePending[id]) { delete nativePending[id]; rej(new Error('응답 시간 초과')); } }, 60000);
     }).then(JSON.parse);
   }
   return fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });

@@ -43,10 +43,19 @@ import androidx.webkit.WebViewAssetLoader;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Dns;
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
+import okhttp3.Request;
+import okhttp3.Response;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -216,6 +225,41 @@ public class MainActivity extends Activity {
         js("document.dispatchEvent(new Event('visibilitychange'))");
     }
 
+    // ---- 인터넷 요청 (OkHttp) ----
+    private static List<InetAddress> v4First(String host) throws UnknownHostException {
+        List<InetAddress> all = Dns.SYSTEM.lookup(host);
+        List<InetAddress> out = new ArrayList<>();
+        for (InetAddress a : all) if (a instanceof Inet4Address) out.add(a);
+        for (InetAddress a : all) if (!(a instanceof Inet4Address)) out.add(a);
+        return out;
+    }
+
+    private static List<InetAddress> v4Only(String host) throws UnknownHostException {
+        List<InetAddress> out = new ArrayList<>();
+        for (InetAddress a : Dns.SYSTEM.lookup(host)) if (a instanceof Inet4Address) out.add(a);
+        if (out.isEmpty()) throw new UnknownHostException("IPv4 주소 없음: " + host);
+        return out;
+    }
+
+    static final OkHttpClient HTTP_V4_FIRST = new OkHttpClient.Builder()
+            .dns(MainActivity::v4First)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build();
+
+    static final OkHttpClient HTTP_V4_ONLY = HTTP_V4_FIRST.newBuilder()
+            .dns(MainActivity::v4Only)
+            .protocols(Collections.singletonList(Protocol.HTTP_1_1))
+            .readTimeout(20, TimeUnit.SECONDS)
+            .build();
+
+    private static String get(OkHttpClient client, Request req) throws IOException {
+        try (Response r = client.newCall(req).execute()) {
+            if (!r.isSuccessful()) throw new IOException("HTTP " + r.code());
+            return r.body() != null ? r.body().string() : "";
+        }
+    }
+
     private ComponentName listenerName() { return new ComponentName(this, NotifListener.class); }
 
     private void startMedia() {
@@ -347,29 +391,19 @@ public class MainActivity extends Activity {
                 boolean ok = false;
                 String text;
                 try {
-                    URL u = new URL(url);
-                    String host = u.getHost();
-                    if (!"https".equals(u.getProtocol())
-                            || !(host.equals("api.open-meteo.com") || host.equals("api.bigdatacloud.net"))) {
+                    HttpUrl u = HttpUrl.parse(url);
+                    if (u == null || !u.isHttps()
+                            || !(u.host().equals("api.open-meteo.com") || u.host().equals("api.bigdatacloud.net"))) {
                         throw new IllegalArgumentException("허용되지 않은 주소");
                     }
-                    HttpURLConnection c = (HttpURLConnection) u.openConnection();
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(30000);
-                    int code = c.getResponseCode();
-                    if (code >= 400) {
-                        text = "HTTP " + code;
-                    } else {
-                        try (InputStream in = c.getInputStream()) {
-                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                            byte[] buf = new byte[8192];
-                            int n;
-                            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
-                            text = new String(bos.toByteArray(), StandardCharsets.UTF_8);
-                            ok = true;
-                        }
+                    Request req = new Request.Builder().url(u).header("User-Agent", "DeskClock/1.0").build();
+                    try {
+                        text = get(HTTP_V4_FIRST, req);
+                    } catch (IOException first) {
+                        // 일부 공유기·태블릿에서 IPv6 경로가 멈추는 경우가 있어 IPv4로만 한 번 더 시도
+                        text = get(HTTP_V4_ONLY, req);
                     }
-                    c.disconnect();
+                    ok = true;
                 } catch (Exception e) {
                     text = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
                 }
