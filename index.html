@@ -156,15 +156,42 @@ const NIGHT = { 0:'🌙', 1:'🌙', 2:'☁️' };
 let coords = null;
 try { coords = JSON.parse(localStorage.getItem('clock_coords')); } catch (e) {}
 
+/* 앱(APK)에서는 위치와 인터넷 요청을 안드로이드 쪽에서 처리 (WebView보다 안정적) */
+const nativePending = {};
+let nativeSeq = 0;
+window.__nativeFetchDone = (id, ok, text) => {
+  const p = nativePending[id];
+  if (!p) return;
+  delete nativePending[id];
+  ok ? p.res(text) : p.rej(new Error(text));
+};
+function getJSON(url) {
+  if (window.Android && Android.fetchText) {
+    return new Promise((res, rej) => {
+      const id = ++nativeSeq;
+      nativePending[id] = { res, rej };
+      Android.fetchText(id, url);
+      setTimeout(() => { if (nativePending[id]) { delete nativePending[id]; rej(new Error('응답 시간 초과')); } }, 20000);
+    }).then(JSON.parse);
+  }
+  return fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+}
+
+function saveCoords(c) {
+  coords = c;
+  try { localStorage.setItem('clock_coords', JSON.stringify(c)); } catch (e) {}
+}
+
 function getPosition() {
   return new Promise(resolve => {
+    if (window.Android && Android.getLocation) {
+      const s = Android.getLocation();
+      if (s) saveCoords(JSON.parse(s));
+      return resolve(coords);
+    }
     if (!navigator.geolocation) return resolve(coords);
     navigator.geolocation.getCurrentPosition(
-      p => {
-        coords = { lat: p.coords.latitude, lon: p.coords.longitude };
-        try { localStorage.setItem('clock_coords', JSON.stringify(coords)); } catch (e) {}
-        resolve(coords);
-      },
+      p => { saveCoords({ lat: p.coords.latitude, lon: p.coords.longitude }); resolve(coords); },
       () => resolve(coords),           // 실패 시 마지막으로 저장된 위치 사용
       { timeout: 15000, maximumAge: 30 * 60 * 1000 }
     );
@@ -173,8 +200,7 @@ function getPosition() {
 
 async function loadPlaceName(c) {
   try {
-    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${c.lat}&longitude=${c.lon}&localityLanguage=ko`);
-    const j = await r.json();
+    const j = await getJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${c.lat}&longitude=${c.lon}&localityLanguage=ko`);
     const parts = [j.principalSubdivision, j.city, j.locality].filter(Boolean);
     const name = [...new Set(parts)].join(' ');
     if (name) $('loc').textContent = name;
@@ -195,7 +221,7 @@ async function loadWeather() {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
       + `&hourly=temperature_2m,weather_code,precipitation_probability,is_day`
       + `&timezone=auto&forecast_days=2`;
-    const j = await (await fetch(url)).json();
+    const j = await getJSON(url);
     const h = j.hourly;
 
     const now = new Date();
@@ -221,7 +247,12 @@ async function loadWeather() {
     }
     $('rows').innerHTML = html;
   } catch (e) {
-    $('rows').innerHTML = '<div class="msg">날씨를 불러오지 못했어요. 잠시 후 다시 시도합니다.</div>';
+    const msg = document.createElement('div');
+    msg.className = 'msg';
+    msg.textContent = `날씨를 불러오지 못했어요 (${e.message || e}). 잠시 후 다시 시도합니다.`;
+    $('rows').replaceChildren(msg);
+    clearTimeout(window.__retry);
+    window.__retry = setTimeout(loadWeather, 60 * 1000);
   }
 }
 

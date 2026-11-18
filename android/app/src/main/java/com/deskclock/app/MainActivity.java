@@ -9,6 +9,8 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Bundle;
@@ -27,6 +29,15 @@ import android.webkit.WebViewClient;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
 public class MainActivity extends Activity {
 
     static final String PREFS = "clock";
@@ -37,6 +48,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private boolean pageReady = false;
+    private volatile String lastLoc = "";
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
@@ -102,7 +114,33 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        updateLocation();
         js("typeof loadWeather === 'function' && loadWeather()");
+    }
+
+    /** 마지막으로 알려진 위치를 바로 쓰고, 새 위치도 한 번 요청 */
+    private void updateLocation() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        try {
+            LocationManager lm = getSystemService(LocationManager.class);
+            Location best = null;
+            for (String p : lm.getProviders(true)) {
+                Location l = lm.getLastKnownLocation(p);
+                if (l != null && (best == null || l.getTime() > best.getTime())) best = l;
+            }
+            if (best != null) setLocation(best);
+            String prov = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ? LocationManager.NETWORK_PROVIDER
+                    : lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ? LocationManager.GPS_PROVIDER : null;
+            if (prov != null) {
+                lm.getCurrentLocation(prov, null, getMainExecutor(), l -> { if (l != null) setLocation(l); });
+            }
+        } catch (SecurityException ignored) {}
+    }
+
+    private void setLocation(Location l) {
+        boolean first = lastLoc.isEmpty();
+        lastLoc = String.format(Locale.US, "{\"lat\":%.4f,\"lon\":%.4f}", l.getLatitude(), l.getLongitude());
+        if (first) js("typeof loadWeather === 'function' && loadWeather()");
     }
 
     @Override
@@ -111,6 +149,7 @@ public class MainActivity extends Activity {
         current = this;
         hideSystemBars();
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        updateLocation();
         pushState();
     }
 
@@ -162,6 +201,45 @@ public class MainActivity extends Activity {
 
     /** 웹 화면(index.html)에서 window.Android 로 호출 */
     class Bridge {
+        /** 위치 {"lat":..,"lon":..} 또는 빈 문자열 */
+        @JavascriptInterface public String getLocation() { return lastLoc; }
+
+        /** 날씨·지역 이름 요청을 안드로이드에서 직접 처리. 결과는 __nativeFetchDone(id, ok, text) 로 돌려줌 */
+        @JavascriptInterface public void fetchText(final int id, final String url) {
+            new Thread(() -> {
+                boolean ok = false;
+                String text;
+                try {
+                    URL u = new URL(url);
+                    String host = u.getHost();
+                    if (!"https".equals(u.getProtocol())
+                            || !(host.equals("api.open-meteo.com") || host.equals("api.bigdatacloud.net"))) {
+                        throw new IllegalArgumentException("허용되지 않은 주소");
+                    }
+                    HttpURLConnection c = (HttpURLConnection) u.openConnection();
+                    c.setConnectTimeout(10000);
+                    c.setReadTimeout(15000);
+                    int code = c.getResponseCode();
+                    if (code >= 400) {
+                        text = "HTTP " + code;
+                    } else {
+                        try (InputStream in = c.getInputStream()) {
+                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+                            text = new String(bos.toByteArray(), StandardCharsets.UTF_8);
+                            ok = true;
+                        }
+                    }
+                    c.disconnect();
+                } catch (Exception e) {
+                    text = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+                }
+                js("window.__nativeFetchDone && __nativeFetchDone(" + id + "," + ok + "," + JSONObject.quote(text) + ")");
+            }).start();
+        }
+
         @JavascriptInterface public boolean hasNotifAccess() { return MainActivity.hasNotifAccess(MainActivity.this); }
 
         @JavascriptInterface public void openNotifAccess() {
