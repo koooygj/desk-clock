@@ -355,7 +355,7 @@ public class MainActivity extends Activity {
                     }
                     HttpURLConnection c = (HttpURLConnection) u.openConnection();
                     c.setConnectTimeout(10000);
-                    c.setReadTimeout(15000);
+                    c.setReadTimeout(30000);
                     int code = c.getResponseCode();
                     if (code >= 400) {
                         text = "HTTP " + code;
