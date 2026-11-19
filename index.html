@@ -10,187 +10,247 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
+  /*
+   * 배치: 세로 = 시계 / 위젯(미디어·달력·날씨, 순서 변경 가능) / 앱 독
+   *       가로 = 왼쪽(시계 + 앱 독) | 오른쪽(위젯)
+   * 크기 단위 --u: 폰·태블릿 어디서든 비슷한 비율이 되도록 화면 너비와 높이 중 작은 쪽 기준
+   */
+  :root {
+    --bg: #000000;
+    --fg: #ffffff;
+    --dim: 0.35;
+    --card: rgba(255,255,255,.07);
+    --line: rgba(255,255,255,.12);
+    --rain: #6cb6ff;
+    --holiday: #ff7b7b;
+    --sat: #8fb8ff;
+    --u: min(1vw, .5vh);
+  }
+  @media (orientation: landscape) { :root { --u: min(.5vw, 1vh); } }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
   [hidden] { display: none !important; }
-  html, body { height: 100%; background: var(--bg, #000); color: #fff; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); }
   body {
     font-family: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
-    display: flex; flex-direction: column;
-    padding: env(safe-area-inset-top) max(20px, 7vw) env(safe-area-inset-bottom);
-    user-select: none; overflow: hidden;
+    user-select: none; overflow: hidden; -webkit-tap-highlight-color: transparent;
   }
-  /* 시계는 화면 위쪽 1/5 지점부터 시작 (아래쪽은 미디어 + 날씨 자리) */
-  .clock {
-    flex: 1; display: flex; flex-direction: column;
-    justify-content: flex-start; align-items: center; text-align: center;
-    padding-top: 17vh;
+  body.light {
+    --card: rgba(0,0,0,.05);
+    --line: rgba(0,0,0,.1);
+    --rain: #1a6fd1;
+    --holiday: #d63b3b;
+    --sat: #2f62c9;
   }
-  .date { font-size: 5.6vw; color: #ccc; letter-spacing: .02em; }
-  .time {
-    font-size: 22vw; font-weight: 200; line-height: 1;
-    font-variant-numeric: tabular-nums; margin-top: 2vh;
-  }
-  .sec { font-size: 7vw; color: #888; font-variant-numeric: tabular-nums; margin-top: 1vh; }
-  .ampm { font-size: 6vw; color: #aaa; margin-top: 1vh; }
+  body.photo { --card: rgba(0,0,0,.28); --line: rgba(255,255,255,.18); }
+  body.photo.light { --card: rgba(255,255,255,.45); --line: rgba(0,0,0,.12); }
 
-  /* 날씨: 화면 아래에 작게 고정, 시계가 화면 정중앙에 오도록 흐름에서 뺌 */
-  .weather {
-    position: fixed; left: 0; right: 0;
-    bottom: calc(env(safe-area-inset-bottom) + 6vh);
-    padding: 0 max(20px, 9vw);
-  }
-  .loc { font-size: 3.2vw; color: #666; text-align: center; margin-bottom: 1.8vh; }
-  .rows { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2vw; }
-  .cell { display: flex; flex-direction: column; align-items: center; gap: .6vh; }
-  .cell .h { font-size: 3.2vw; color: #888; }
-  .cell .ic { font-size: 6vw; line-height: 1.2; }
-  .cell .t { font-size: 4.4vw; font-variant-numeric: tabular-nums; }
-  .cell .p { font-size: 3vw; color: #6cb6ff; font-variant-numeric: tabular-nums; }
-  .cell.now .h { color: #fff; font-weight: 600; }
-  .msg { grid-column: 1 / -1; text-align: center; color: #666; font-size: 3.6vw; }
+  /* 배경 사진 + 어둡게 */
+  .bg-photo { position: fixed; inset: 0; background: center / cover no-repeat; }
+  .bg-photo::after { content: ""; position: absolute; inset: 0; background: #000; opacity: var(--dim); }
+  body.light .bg-photo::after { background: #fff; }
 
-  /* 앱(APK)에서만: 위쪽 알림 아이콘 + 배터리 */
+  /* ---------- 상단: 알림 아이콘 · 설정 · 배터리 ---------- */
   .status {
-    position: fixed; left: 0; right: 0;
+    position: fixed; left: 0; right: 0; z-index: 5;
     top: calc(env(safe-area-inset-top) + 14px);
-    padding: 0 max(20px, 5vw); display: flex; justify-content: space-between; align-items: center;
-    color: #aaa; font-size: 3.8vw; z-index: 5;
+    padding: 0 max(20px, calc(var(--u) * 5));
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: calc(var(--u) * 3.4);
   }
-  .notifs { display: flex; gap: 2.2vw; align-items: center; min-height: 5vw; }
-  .notifs img { width: 4.6vw; height: 4.6vw; opacity: .85; }
-  .right { display: flex; align-items: center; gap: 4vw; }
-  .gear {
-    background: none; border: 0; color: #777; padding: 1vw; display: flex;
+  .notifs { display: flex; gap: calc(var(--u) * 2); align-items: center; min-height: calc(var(--u) * 5); }
+  .notifs i {
+    width: calc(var(--u) * 4.2); height: calc(var(--u) * 4.2); background: var(--fg); opacity: .8;
+    -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat;
   }
-  .gear svg { width: 5.4vw; height: 5.4vw; fill: currentColor; }
+  .right { display: flex; align-items: center; gap: calc(var(--u) * 4); opacity: .75; }
+  .gear { background: none; border: 0; color: inherit; padding: calc(var(--u) * 1); display: flex; }
+  .gear svg { width: calc(var(--u) * 5); height: calc(var(--u) * 5); fill: currentColor; }
   .nhint {
-    background: none; border: 1px solid #333; border-radius: 999px; color: #888;
-    font-size: 3.2vw; padding: .6vh 3vw; font-family: inherit;
+    background: none; border: 1px solid var(--line); border-radius: 999px; color: inherit; opacity: .7;
+    font-size: calc(var(--u) * 3); padding: calc(var(--u) * 1) calc(var(--u) * 3); font-family: inherit;
   }
-  .batt { display: flex; align-items: center; gap: 1.6vw; font-variant-numeric: tabular-nums; }
-  .batt .shell { width: 7vw; height: 3.6vw; border: 1.5px solid #aaa; border-radius: 3px; padding: 1.5px; position: relative; }
-  .batt .shell::after { content: ""; position: absolute; right: -4px; top: 30%; width: 2px; height: 40%; background: #aaa; border-radius: 1px; }
-  .batt .fill { height: 100%; background: #ddd; border-radius: 1px; }
-  .batt.low .fill { background: #ff6b6b; }
-  .batt.charging .fill { background: #5fd38d; }
+  .batt { display: flex; align-items: center; gap: calc(var(--u) * 1.6); font-variant-numeric: tabular-nums; }
+  .batt .shell {
+    width: calc(var(--u) * 6.4); height: calc(var(--u) * 3.2);
+    border: 1.5px solid currentColor; border-radius: 3px; padding: 1.5px; position: relative;
+  }
+  .batt .shell::after { content: ""; position: absolute; right: -4px; top: 30%; width: 2px; height: 40%; background: currentColor; border-radius: 1px; }
+  .batt .fill { height: 100%; background: currentColor; border-radius: 1px; }
+  .batt.low .fill { background: #e5484d; }
+  .batt.charging .fill { background: #30a46c; }
 
-  /* 현재 재생 중인 미디어 (앱에서만) */
-  .media {
-    display: flex; align-items: center; gap: 3.6vw;
-    background: rgba(255,255,255,.06); border-radius: 14px;
-    padding: 2.6vw; margin-bottom: 4vh;
+  /* ---------- 전체 배치 ---------- */
+  .layout {
+    position: relative; height: 100%;
+    display: grid; grid-template-rows: auto 1fr auto; grid-template-areas: "clock" "widgets" "dock";
+    padding: calc(env(safe-area-inset-top) + 9vh) max(20px, calc(var(--u) * 7)) calc(env(safe-area-inset-bottom) + 4vh);
+    row-gap: calc(var(--u) * 5);
   }
-  .media img { width: 12vw; height: 12vw; border-radius: 8px; object-fit: cover; background: #222; flex: none; }
+  @media (orientation: landscape) {
+    .layout {
+      grid-template-columns: 54% 46%; grid-template-rows: 1fr auto;
+      grid-template-areas: "clock widgets" "dock widgets";
+      padding-top: calc(env(safe-area-inset-top) + 10vh); padding-bottom: calc(env(safe-area-inset-bottom) + 4vh);
+      column-gap: calc(var(--u) * 4);
+    }
+  }
+
+  .clock { grid-area: clock; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .date { font-size: calc(var(--u) * 5.2); opacity: .8; letter-spacing: .02em; }
+  .time { font-size: calc(var(--u) * 22); font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; margin-top: calc(var(--u) * 2); }
+  .sec { font-size: calc(var(--u) * 6.4); opacity: .5; font-variant-numeric: tabular-nums; margin-top: calc(var(--u) * 1.5); }
+  @media (orientation: landscape) { .time { font-size: calc(var(--u) * 26); } }
+
+  .widgets {
+    grid-area: widgets; min-height: 0; overflow-y: auto; scrollbar-width: none;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: calc(var(--u) * 3);
+  }
+  .widgets::-webkit-scrollbar { display: none; }
+  /* 가로 화면: 오른쪽 칸에 세 위젯이 다 들어가도록 조금 촘촘하게 */
+  @media (orientation: landscape) {
+    /* 폰처럼 가로로 긴 화면은 높이가 모자라서 위젯만 조금 더 작게 (태블릿은 그대로) */
+    .widgets { --u: min(.5vw, .8vh); justify-content: safe center; gap: calc(var(--u) * 2.2); }
+    .widgets .card { padding: calc(var(--u) * 2.2) calc(var(--u) * 2.6); border-radius: calc(var(--u) * 3.2); }
+    .media img { width: calc(var(--u) * 9); height: calc(var(--u) * 9); }
+    .mt { font-size: calc(var(--u) * 3.2); }
+    .ma { font-size: calc(var(--u) * 2.6); }
+    .mctl svg { width: calc(var(--u) * 4.4); height: calc(var(--u) * 4.4); }
+    .mctl #mPlay svg { width: calc(var(--u) * 5.2); height: calc(var(--u) * 5.2); }
+    .cal-head { margin-bottom: calc(var(--u) * 1.2); }
+    .cal-head b { font-size: calc(var(--u) * 3.2); }
+    .cal-grid { row-gap: 0; }
+    .cal-grid .wd { font-size: calc(var(--u) * 2.3); padding-bottom: calc(var(--u) * .6); }
+    .cal-grid .d { height: calc(var(--u) * 3.8); font-size: calc(var(--u) * 2.6); }
+    .cal-grid .today span { width: calc(var(--u) * 3.8); height: calc(var(--u) * 3.8); }
+    .loc { font-size: calc(var(--u) * 2.6); margin-bottom: calc(var(--u) * 1.4); }
+    .cell { gap: calc(var(--u) * .4); }
+    .cell .h { font-size: calc(var(--u) * 2.6); }
+    .cell .ic { font-size: calc(var(--u) * 4.6); }
+    .cell .t { font-size: calc(var(--u) * 3.6); }
+    .cell .p { font-size: calc(var(--u) * 2.4); }
+  }
+
+  .card {
+    background: var(--card); border-radius: calc(var(--u) * 4); padding: calc(var(--u) * 3);
+    flex: none;
+  }
+  body.photo .card { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+
+  /* 미디어 */
+  .media { display: flex; align-items: center; gap: calc(var(--u) * 3); }
+  .media img { width: calc(var(--u) * 11); height: calc(var(--u) * 11); border-radius: calc(var(--u) * 2); object-fit: cover; background: var(--line); flex: none; }
   .media img[src=""] { visibility: hidden; }
   .mtext { flex: 1; min-width: 0; }
-  .mt { font-size: 3.8vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ma { font-size: 3.1vw; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .4vh; }
-  .mctl { display: flex; gap: 1vw; flex: none; }
-  .mctl button { background: none; border: 0; color: #ddd; padding: 1.6vw; display: flex; }
-  .mctl svg { width: 5.6vw; height: 5.6vw; fill: currentColor; }
-  .mctl #mPlay svg { width: 6.6vw; height: 6.6vw; }
+  .mt { font-size: calc(var(--u) * 3.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ma { font-size: calc(var(--u) * 2.9); opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: calc(var(--u) * .6); }
+  .mctl { display: flex; flex: none; }
+  .mctl button { background: none; border: 0; color: inherit; padding: calc(var(--u) * 1.4); display: flex; }
+  .mctl svg { width: calc(var(--u) * 5); height: calc(var(--u) * 5); fill: currentColor; }
+  .mctl #mPlay svg { width: calc(var(--u) * 6); height: calc(var(--u) * 6); }
 
-  /* 밝은 배경을 고르면 글씨를 어두운 색으로 */
-  body.light { color: #111; }
-  body.light .date { color: #444; }
-  body.light .sec { color: #777; }
-  body.light .loc, body.light .msg { color: #777; }
-  body.light .cell .h { color: #777; }
-  body.light .cell.now .h { color: #111; }
-  body.light .cell .p { color: #1a6fd1; }
-  body.light .status { color: #555; }
-  body.light .gear { color: #666; }
-  body.light .nhint { border-color: #bbb; color: #555; }
-  body.light .notifs img { filter: invert(1); }
-  body.light .batt .shell { border-color: #555; }
-  body.light .batt .shell::after { background: #555; }
-  body.light .batt .fill { background: #444; }
-  body.light .batt.low .fill { background: #e03131; }
-  body.light .batt.charging .fill { background: #2f9e44; }
-  body.light .media { background: rgba(0,0,0,.06); }
-  body.light .media img { background: #ddd; }
-  body.light .ma { color: #666; }
-  body.light .mctl button { color: #222; }
-
-  /* 야간 모드: 전체를 어둡게 */
-  body.night .clock, body.night .weather, body.night .status { opacity: .35; }
-
-  .swatches { display: flex; flex-wrap: wrap; gap: 2.4vw; justify-content: flex-end; }
-  .opt > div:first-child { flex: none; white-space: nowrap; }
-  .opt > div:first-child small { white-space: normal; }
-  .sw { width: 8vw; height: 8vw; border-radius: 50%; border: 2px solid #444; padding: 0 !important; }
-  .sw.sel { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
-  .sw-custom { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
-  .sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
-
-  /* 설정 (오른쪽 위 톱니바퀴 또는 시계 길게 누르기) */
-  .panel {
-    position: fixed; inset: 0; background: rgba(0,0,0,.95);
-    display: flex; flex-direction: column; gap: 3vh; overflow-y: auto;
-    padding: calc(env(safe-area-inset-top) + 8vh) 8vw 6vh; font-size: 4.4vw; z-index: 10;
-    color: #fff;
+  /* 달력 */
+  .cal-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: calc(var(--u) * 2); padding: 0 calc(var(--u) * 1); }
+  .cal-head b { font-size: calc(var(--u) * 3.6); font-weight: 600; }
+  .cal-head span { font-size: calc(var(--u) * 2.8); opacity: .55; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: calc(var(--u) * .6); text-align: center; }
+  .cal-grid .wd { font-size: calc(var(--u) * 2.5); opacity: .5; padding-bottom: calc(var(--u) * 1); }
+  .cal-grid .d {
+    font-size: calc(var(--u) * 2.9); font-variant-numeric: tabular-nums;
+    height: calc(var(--u) * 5); display: flex; align-items: center; justify-content: center;
   }
-  .panel h2 { font-size: 6vw; font-weight: 500; margin-bottom: 1vh; }
-  .opt { display: flex; justify-content: space-between; align-items: center; gap: 4vw; border-bottom: 1px solid #222; padding-bottom: 2.4vh; }
-  .opt small { display: block; color: #777; font-size: 3.4vw; margin-top: .6vh; }
-  .panel button, .panel select {
-    background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 8px;
-    font-size: 4vw; padding: 1.4vh 3.4vw; font-family: inherit;
+  .cal-grid .d.out { opacity: .25; }
+  .cal-grid .sun, .cal-grid .hol { color: var(--holiday); }
+  .cal-grid .sat { color: var(--sat); }
+  .cal-grid .today span {
+    background: var(--fg); color: var(--bg); border-radius: 50%; font-weight: 600;
+    width: calc(var(--u) * 5); height: calc(var(--u) * 5); display: flex; align-items: center; justify-content: center;
   }
-  .panel button.on { background: #fff; color: #000; border-color: #fff; }
-  .panel .close { align-self: center; margin-top: 2vh; padding: 1.4vh 10vw; }
-  .hint { color: #555; font-size: 3.2vw; text-align: center; }
+  body.photo .cal-grid .today span { color: #000; }
+  body.photo.light .cal-grid .today span { color: #fff; }
 
-  /* 가로 모드: 왼쪽 시계, 오른쪽 미디어 + 날씨. 글자 크기는 화면 높이(vh) 기준 */
+  /* 날씨 */
+  .loc { font-size: calc(var(--u) * 2.9); opacity: .55; text-align: center; margin-bottom: calc(var(--u) * 2.4); }
+  .rows { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(var(--u) * 1); }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * .8); }
+  .cell .h { font-size: calc(var(--u) * 2.9); opacity: .6; }
+  .cell.now .h { opacity: 1; font-weight: 600; }
+  .cell .ic { font-size: calc(var(--u) * 5.4); line-height: 1.2; }
+  .cell .t { font-size: calc(var(--u) * 4); font-variant-numeric: tabular-nums; }
+  .cell .p { font-size: calc(var(--u) * 2.7); color: var(--rain); font-variant-numeric: tabular-nums; }
+  .msg { grid-column: 1 / -1; text-align: center; opacity: .6; font-size: calc(var(--u) * 3); }
+
+  /* 앱 독 */
+  .dock { grid-area: dock; justify-self: center; display: flex; justify-content: center; flex-wrap: wrap; gap: calc(var(--u) * 3); padding: calc(var(--u) * 2.4) calc(var(--u) * 3); }
+  .app { background: none; border: 0; color: inherit; font-family: inherit; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 1); width: calc(var(--u) * 12); }
+  .app img { width: calc(var(--u) * 10); height: calc(var(--u) * 10); border-radius: 22%; }
+  .app span { font-size: calc(var(--u) * 2.3); opacity: .75; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app:active img { transform: scale(.92); }
   @media (orientation: landscape) {
-    .clock { width: 54%; padding-top: 0; justify-content: center; }
-    .date { font-size: min(5vh, 2.6vw); }
-    /* 폰은 높이, 태블릿(덜 가로로 긴 화면)은 너비가 한계 */
-    .time { font-size: min(27vh, 14vw); margin-top: 2vh; }
-    .sec { font-size: min(6.4vh, 3.4vw); }
-
-    .weather {
-      left: 54%; right: 0; top: 0; bottom: 0;
-      display: flex; flex-direction: column; justify-content: center;
-      padding: 12vh 7vw 6vh 3vw;
-    }
-    .media { gap: min(3vh, 1.4vw); padding: 2vh; margin-bottom: 6vh; }
-    .media img { width: min(12vh, 5.4vw); height: min(12vh, 5.4vw); }
-    .mt { font-size: min(4vh, 1.8vw); }
-    .ma { font-size: min(3.2vh, 1.45vw); }
-    .mctl { gap: 0; }
-    .mctl button { padding: min(1.6vh, .8vw); }
-    .mctl svg { width: min(5.6vh, 2.6vw); height: min(5.6vh, 2.6vw); }
-    .mctl #mPlay svg { width: min(6.6vh, 3vw); height: min(6.6vh, 3vw); }
-    .loc { font-size: min(3.4vh, 1.6vw); margin-bottom: 2.4vh; }
-    .rows { gap: 1vw; }
-    .cell { gap: 1vh; }
-    .cell .h { font-size: min(3.4vh, 1.6vw); }
-    .cell .ic { font-size: min(6.6vh, 3vw); }
-    .cell .t { font-size: min(4.6vh, 2.1vw); }
-    .cell .p { font-size: min(3.2vh, 1.5vw); }
-    .msg { font-size: 3.6vh; }
-
-    .status { font-size: 3.8vh; }
-    .notifs { gap: 2.2vh; min-height: 5vh; }
-    .notifs img { width: 4.6vh; height: 4.6vh; }
-    .right { gap: 4vh; }
-    .gear svg { width: 5.4vh; height: 5.4vh; }
-    .nhint { font-size: 3.2vh; padding: .6vh 3vh; }
-    .batt { gap: 1.6vh; }
-    .batt .shell { width: 7vh; height: 3.6vh; }
-
-    .panel { font-size: 4.4vh; padding: 8vh 18vw 6vh; gap: 3vh; }
-    .panel h2 { font-size: 6vh; }
-    .opt small { font-size: 3.4vh; }
-    .panel button, .panel select { font-size: 4vh; padding: 1.4vh 3.4vh; }
-    .sw { width: 8vh; height: 8vh; }
-    .swatches { gap: 2.4vh; }
-    .hint { font-size: 3.2vh; }
+    .dock { align-self: end; justify-self: center; }
+    .app { width: calc(var(--u) * 10); }
+    .app img { width: calc(var(--u) * 8); height: calc(var(--u) * 8); }
   }
+
+  /* 야간 모드 */
+  body.night .layout, body.night .status { opacity: .35; }
+  body.night .bg-photo { opacity: .4; }
+
+  /* ---------- 설정 ---------- */
+  .panel {
+    position: fixed; inset: 0; z-index: 10; background: #0d0d0f; color: #f2f2f2;
+    overflow-y: auto; font-size: 16px;
+    padding: calc(env(safe-area-inset-top) + 28px) max(20px, 8vw) calc(env(safe-area-inset-bottom) + 28px);
+  }
+  .panel-inner { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .panel-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .panel h2 { font-size: 24px; font-weight: 600; }
+  .panel h3 { font-size: 13px; font-weight: 500; color: #8a8a90; letter-spacing: .04em; margin: 18px 4px 2px; }
+  .group { background: #1a1a1e; border-radius: 14px; overflow: hidden; }
+  .opt { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #26262b; min-height: 56px; }
+  .opt:last-child { border-bottom: 0; }
+  .opt .lbl { flex: 1; min-width: 0; }
+  .opt small { display: block; color: #8a8a90; font-size: 13px; margin-top: 3px; }
+  .panel button, .panel select {
+    background: #2a2a30; color: #f2f2f2; border: 0; border-radius: 10px;
+    font-size: 15px; padding: 9px 14px; font-family: inherit;
+  }
+  .panel button.primary { background: #f2f2f2; color: #111; }
+  .toggle { width: 52px; height: 32px; border-radius: 999px !important; padding: 0 !important; position: relative; background: #3a3a40 !important; flex: none; }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .toggle.on { background: #30a46c !important; }
+  .toggle.on::after { transform: translateX(20px); }
+  .order { display: flex; gap: 6px; }
+  .order button { padding: 6px 10px; font-size: 14px; }
+  .order button:disabled { opacity: .3; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 16px 16px; }
+  .sw { width: 34px; height: 34px; border-radius: 50% !important; border: 2px solid #444 !important; padding: 0 !important; position: relative; overflow: hidden; }
+  .sw.sel { border-color: #fff !important; box-shadow: 0 0 0 2px #0d0d0f inset; }
+  .sw-auto { background: linear-gradient(135deg, #fff 50%, #000 50%) !important; }
+  .sw-auto::after { content: "자동"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; text-shadow: 0 0 3px #000; font-size: 11px; }
+  .sw-custom { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
+  .sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+  .opt input[type=range] { width: 46%; accent-color: #30a46c; }
+  .panel .hint { color: #6a6a70; font-size: 13px; text-align: center; margin-top: 10px; }
+
+  /* 앱 고르기 */
+  .picker { position: fixed; inset: 0; z-index: 11; background: #0d0d0f; color: #f2f2f2; display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top) + 20px) max(16px, 6vw) calc(env(safe-area-inset-bottom) + 16px); }
+  .picker-top { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; max-width: 620px; width: 100%; margin-inline: auto; }
+  .picker-top input { flex: 1; min-width: 0; background: #1a1a1e; border: 0; border-radius: 10px; color: #f2f2f2; font-size: 16px; padding: 11px 14px; font-family: inherit; }
+  .picker-top button { background: #f2f2f2; color: #111; border: 0; border-radius: 10px; font-size: 15px; padding: 11px 16px; font-family: inherit; }
+  .picker-sub { color: #8a8a90; font-size: 13px; max-width: 620px; width: 100%; margin: 0 auto 10px; }
+  .app-list { flex: 1; overflow-y: auto; max-width: 620px; width: 100%; margin: 0 auto; }
+  .app-row { display: flex; align-items: center; gap: 14px; width: 100%; background: none; border: 0; color: inherit; font-family: inherit; font-size: 16px; padding: 10px 6px; border-bottom: 1px solid #1f1f24; text-align: left; }
+  .app-row img { width: 40px; height: 40px; border-radius: 22%; flex: none; }
+  .app-row .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-row .ck { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #444; display: flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+  .app-row.sel .ck { background: #30a46c; border-color: #30a46c; color: #fff; }
 </style>
 </head>
 <body>
+  <div class="bg-photo" id="bgPhoto" hidden></div>
+
   <div class="status" id="status">
     <div class="notifs" id="notifs"></div>
     <div class="right">
@@ -199,75 +259,183 @@
     </div>
   </div>
 
-  <section class="clock" id="clock">
-    <div class="date" id="date"></div>
-    <div class="time" id="time"></div>
-    <div class="sec" id="sec"></div>
-  </section>
+  <main class="layout">
+    <section class="clock" id="clock">
+      <div class="date" id="date"></div>
+      <div class="time" id="time"></div>
+      <div class="sec" id="sec"></div>
+    </section>
 
-  <section class="weather">
-    <div class="media" id="media" hidden>
-      <img id="mArt" src="" alt="">
-      <div class="mtext"><div class="mt" id="mTitle"></div><div class="ma" id="mArtist"></div></div>
-      <div class="mctl">
-        <button id="mPrev" aria-label="이전 곡"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
-        <button id="mPlay" aria-label="재생 또는 일시정지"><svg viewBox="0 0 24 24"><path id="mPlayPath" d="M7 4v16l13-8z"/></svg></button>
-        <button id="mNext" aria-label="다음 곡"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    <section class="widgets" id="widgets">
+      <div class="card media" id="w-media" hidden>
+        <img id="mArt" src="" alt="">
+        <div class="mtext"><div class="mt" id="mTitle"></div><div class="ma" id="mArtist"></div></div>
+        <div class="mctl">
+          <button id="mPrev" aria-label="이전 곡"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button id="mPlay" aria-label="재생 또는 일시정지"><svg viewBox="0 0 24 24"><path id="mPlayPath" d="M7 4v16l13-8z"/></svg></button>
+          <button id="mNext" aria-label="다음 곡"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        </div>
       </div>
-    </div>
-    <div class="loc"><span id="loc">위치 확인 중…</span><span id="updated"></span></div>
-    <div class="rows" id="rows"><div class="msg">날씨 불러오는 중…</div></div>
-  </section>
 
+      <div class="card" id="w-calendar">
+        <div class="cal-head"><b id="calTitle"></b><span id="calYear"></span></div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+
+      <div class="card" id="w-weather">
+        <div class="loc"><span id="loc">위치 확인 중…</span><span id="updated"></span></div>
+        <div class="rows" id="rows"><div class="msg">날씨 불러오는 중…</div></div>
+      </div>
+    </section>
+
+    <nav class="card dock" id="w-apps" hidden></nav>
+  </main>
+
+  <!-- 설정 -->
   <div class="panel" id="panel" hidden>
-    <h2>설정</h2>
-    <div class="opt">
-      <div>배경 색상</div>
-      <div class="swatches" id="swatches"></div>
+    <div class="panel-inner">
+      <div class="panel-top"><h2>설정</h2><button class="primary" id="closeBtn">완료</button></div>
+
+      <h3>화면 구성</h3>
+      <div class="group" id="widgetOpts"></div>
+      <div class="group">
+        <div class="opt"><div class="lbl">날짜 표시</div><button class="toggle" id="t-date" aria-label="날짜 표시"></button></div>
+        <div class="opt"><div class="lbl">초 표시</div><button class="toggle" id="t-sec" aria-label="초 표시"></button></div>
+      </div>
+      <div class="group app-only">
+        <div class="opt">
+          <div class="lbl">자주 쓰는 앱<small id="appCount"></small></div>
+          <button id="pickApps">앱 고르기</button>
+        </div>
+      </div>
+
+      <h3>꾸미기</h3>
+      <div class="group">
+        <div class="opt"><div class="lbl">배경 색상</div></div>
+        <div class="swatches" id="bgSwatches"></div>
+        <div class="opt">
+          <div class="lbl">배경 사진<small id="photoState">사진을 고르면 배경 색상 대신 보여요</small></div>
+          <div style="display:flex;gap:8px">
+            <button id="photoDel" hidden>지우기</button>
+            <button id="photoPick">사진 고르기</button>
+          </div>
+        </div>
+        <div class="opt" id="dimRow" hidden>
+          <div class="lbl">사진 어둡게</div>
+          <input type="range" id="dim" min="0" max="80" step="5" aria-label="사진 어둡게">
+        </div>
+        <div class="opt"><div class="lbl">글자 색<small>자동은 배경 밝기에 맞춰 흰색 또는 검정</small></div></div>
+        <div class="swatches" id="fgSwatches"></div>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" hidden>
+
+      <h3>야간 모드</h3>
+      <div class="group">
+        <div class="opt"><div class="lbl">야간 모드<small>정해진 시간에 화면을 어둡게</small></div><button class="toggle" id="nightBtn" aria-label="야간 모드"></button></div>
+        <div class="opt"><div class="lbl">야간 시간</div><div><select id="nightFrom" aria-label="시작"></select> ~ <select id="nightTo" aria-label="끝"></select></div></div>
+      </div>
+
+      <h3 class="app-only">앱</h3>
+      <div class="group app-only">
+        <div class="opt">
+          <div class="lbl">알림 아이콘 · 재생 중인 미디어<small>알림 접근 권한이 필요해요</small></div>
+          <button id="notifBtn"></button>
+        </div>
+        <div class="opt">
+          <div class="lbl">미디어 표시 끄기<small>재생이 멈춘 뒤 이 시간이 지나면 숨겨요</small></div>
+          <select id="mediaHide" aria-label="미디어 표시 끄기">
+            <option value="30">30초</option><option value="60">1분</option>
+            <option value="90">1분 30초</option><option value="120">2분</option>
+          </select>
+        </div>
+        <div class="opt">
+          <div class="lbl">충전 시 자동 실행<small>알림 접근 + 다른 앱 위에 표시 권한 필요</small></div>
+          <button class="toggle" id="autoBtn" aria-label="충전 시 자동 실행"></button>
+        </div>
+      </div>
+      <div class="hint">시계를 길게 눌러도 설정이 열려요</div>
     </div>
-    <div class="opt">
-      <div>야간 모드<small>정해진 시간에 화면을 어둡게</small></div>
-      <button id="nightBtn"></button>
+  </div>
+
+  <!-- 자주 쓰는 앱 고르기 -->
+  <div class="picker" id="picker" hidden>
+    <div class="picker-top">
+      <input id="appSearch" type="search" placeholder="앱 이름 검색" aria-label="앱 이름 검색">
+      <button id="pickerDone">완료</button>
     </div>
-    <div class="opt">
-      <div>야간 시간</div>
-      <div><select id="nightFrom"></select> ~ <select id="nightTo"></select></div>
-    </div>
-    <div class="opt app-only">
-      <div>알림 아이콘 · 재생 중인 미디어<small>알림 접근 권한이 필요해요</small></div>
-      <button id="notifBtn"></button>
-    </div>
-    <div class="opt app-only">
-      <div>미디어 표시 끄기<small>재생이 멈춘 뒤 이 시간이 지나면 숨겨요</small></div>
-      <select id="mediaHide">
-        <option value="30">30초</option>
-        <option value="60">1분</option>
-        <option value="90">1분 30초</option>
-        <option value="120">2분</option>
-      </select>
-    </div>
-    <div class="opt app-only">
-      <div>충전 시 자동 실행<small>알림 접근 + 다른 앱 위에 표시 권한 필요</small></div>
-      <button id="autoBtn"></button>
-    </div>
-    <button class="close" id="closeBtn">닫기</button>
-    <div class="hint">오른쪽 위 톱니바퀴나 시계를 길게 눌러도 열려요</div>
+    <div class="picker-sub">누른 순서대로 독에 놓여요. 최대 10개.</div>
+    <div class="app-list" id="appList"></div>
   </div>
 
 <script>
 const $ = id => document.getElementById(id);
 const DAYS = ['일','월','화','수','목','금','토'];
 const pad = n => String(n).padStart(2, '0');
+const IS_APP = !!window.Android;
+
+/* ---------- 설정 저장 ---------- */
+const PREF_KEY = 'clock_prefs';
+const WIDGETS = { media: '재생 중인 미디어', calendar: '달력', weather: '날씨', apps: '자주 쓰는 앱' };
+let prefs = {
+  night: true, nightFrom: 22, nightTo: 7,
+  bg: '#000000', fg: 'auto', dim: 35,
+  mediaHide: 60,
+  showDate: true, showSec: true,
+  widgets: { media: true, calendar: true, weather: true, apps: true },
+  order: ['media', 'calendar', 'weather'],
+  apps: []
+};
+try {
+  const saved = JSON.parse(localStorage.getItem(PREF_KEY)) || {};
+  prefs = { ...prefs, ...saved, widgets: { ...prefs.widgets, ...(saved.widgets || {}) } };
+} catch (e) {}
+const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 
 /* ---------- 시계 ---------- */
+let lastDay = null;
 function tick() {
   const d = new Date();
   $('date').textContent = `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DAYS[d.getDay()]})`;
   $('time').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   $('sec').textContent = pad(d.getSeconds());
+  if (d.getDate() !== lastDay) { lastDay = d.getDate(); renderCalendar(); }
 }
-tick();
-setInterval(tick, 1000);
+
+/* ---------- 달력 ---------- */
+// 양력 공휴일만 (설·추석·부처님오신날 같은 음력 공휴일은 해마다 날짜가 달라 빠져 있어요)
+const HOLIDAYS = ['1-1', '3-1', '5-5', '6-6', '8-15', '10-3', '10-9', '12-25'];
+function renderCalendar() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  $('calTitle').textContent = `${m + 1}월`;
+  $('calYear').textContent = `${y}년`;
+  const first = new Date(y, m, 1);
+  const start = new Date(y, m, 1 - first.getDay());
+  const weeks = Math.ceil((first.getDay() + new Date(y, m + 1, 0).getDate()) / 7);
+  const g = $('calGrid');
+  g.replaceChildren();
+  DAYS.forEach((w, i) => {
+    const el = document.createElement('div');
+    el.className = 'wd' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '');
+    el.textContent = w;
+    g.appendChild(el);
+  });
+  for (let k = 0; k < weeks * 7; k++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + k);
+    const el = document.createElement('div');
+    const cls = ['d'];
+    if (d.getMonth() !== m) cls.push('out');
+    if (d.getDay() === 0) cls.push('sun');
+    if (d.getDay() === 6) cls.push('sat');
+    if (HOLIDAYS.includes(`${d.getMonth() + 1}-${d.getDate()}`)) cls.push('hol');
+    if (d.toDateString() === now.toDateString()) cls.push('today');
+    el.className = cls.join(' ');
+    const s = document.createElement('span');
+    s.textContent = d.getDate();
+    el.appendChild(s);
+    g.appendChild(el);
+  }
+}
 
 /* ---------- 날씨 ---------- */
 const WMO = {
@@ -297,7 +465,7 @@ window.__nativeFetchDone = (id, ok, text) => {
   ok ? p.res(text) : p.rej(new Error(text));
 };
 function getJSON(url) {
-  if (window.Android && Android.fetchText) {
+  if (IS_APP && Android.fetchText) {
     return new Promise((res, rej) => {
       const id = ++nativeSeq;
       nativePending[id] = { res, rej };
@@ -315,7 +483,7 @@ function saveCoords(c) {
 
 function getPosition() {
   return new Promise(resolve => {
-    if (window.Android && Android.getLocation) {
+    if (IS_APP && Android.getLocation) {
       const s = Android.getLocation();
       if (s) saveCoords(JSON.parse(s));
       return resolve(coords);
@@ -338,7 +506,43 @@ async function loadPlaceName(c) {
   } catch (e) {}
 }
 
+const WEATHER_KEY = 'clock_weather';
+let weatherFails = 0;
+function loadCachedWeather() {
+  try {
+    const c = JSON.parse(localStorage.getItem(WEATHER_KEY));
+    return c && Date.now() - c.at < 6 * 3600 * 1000 ? c : null;
+  } catch (e) { return null; }
+}
+
+/* 현재 시각부터 5시간을 그림. 현재 시각이 데이터에 없으면 false */
+function renderWeather(h) {
+  const now = new Date();
+  const key = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:00`;
+  const i = h.time.indexOf(key);
+  if (i < 0) return false;
+  let html = '';
+  for (let k = 0; k < 5; k++) {
+    const idx = i + k;
+    if (idx >= h.time.length) break;
+    const hour = parseInt(h.time[idx].slice(11, 13), 10);
+    const code = h.weather_code[idx];
+    const [icon0, desc] = WMO[code] || ['❔', '-'];
+    const icon = (!h.is_day[idx] && NIGHT[code]) ? NIGHT[code] : icon0;
+    const label = k === 0 ? '지금' : `${pad(hour)}시`;
+    html += `<div class="cell${k === 0 ? ' now' : ''}" title="${desc}">
+      <span class="h">${label}</span>
+      <span class="ic">${icon}</span>
+      <span class="t">${Math.round(h.temperature_2m[idx])}°</span>
+      <span class="p">${h.precipitation_probability[idx] ?? 0}%</span>
+    </div>`;
+  }
+  $('rows').innerHTML = html;
+  return true;
+}
+
 async function loadWeather() {
+  if (!prefs.widgets.weather) return;
   let c = await getPosition();
   if (!c) {
     c = { lat: 37.5665, lon: 126.9780 }; // 위치 권한이 없으면 서울 기준
@@ -347,7 +551,6 @@ async function loadWeather() {
     if ($('loc').textContent.includes('확인')) $('loc').textContent = '현재 위치';
     loadPlaceName(c);
   }
-
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}`
       + `&hourly=temperature_2m,weather_code,precipitation_probability,is_day`
@@ -378,72 +581,190 @@ async function loadWeather() {
   }
 }
 
-const WEATHER_KEY = 'clock_weather';
-let weatherFails = 0;
-function loadCachedWeather() {
+/* ---------- 배경 사진 (IndexedDB에 저장) ---------- */
+let photoUrl = null;
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('desk-clock', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbPut(key, val) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files', 'readwrite');
+    val === null ? tx.objectStore('files').delete(key) : tx.objectStore('files').put(val, key);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const r = db.transaction('files').objectStore('files').get(key);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+function showPhoto(blob) {
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  photoUrl = blob ? URL.createObjectURL(blob) : null;
+  $('bgPhoto').hidden = !photoUrl;
+  $('bgPhoto').style.backgroundImage = photoUrl ? `url("${photoUrl}")` : '';
+  applyTheme();
+}
+// 큰 사진은 화면에 맞게 줄여서 저장 (최대 2000px)
+function shrinkImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 2000, s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? res(b) : rej(new Error('변환 실패')), 'image/jpeg', 0.88);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('사진을 읽을 수 없어요')); };
+    img.src = url;
+  });
+}
+$('photoPick').onclick = () => $('photoInput').click();
+$('photoInput').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  $('photoState').textContent = '사진 넣는 중…';
   try {
-    const c = JSON.parse(localStorage.getItem(WEATHER_KEY));
-    return c && Date.now() - c.at < 6 * 3600 * 1000 ? c : null;
-  } catch (e) { return null; }
-}
-
-/* 현재 시각부터 5시간을 그림. 현재 시각이 데이터에 없으면 false */
-function renderWeather(h) {
-  const now = new Date();
-  const key = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:00`;
-  const i = h.time.indexOf(key);
-  if (i < 0) return false;
-
-  let html = '';
-  for (let k = 0; k < 5; k++) {
-    const idx = i + k;
-    if (idx >= h.time.length) break;
-    const hour = parseInt(h.time[idx].slice(11, 13), 10);
-    const code = h.weather_code[idx];
-    const [icon0, desc] = WMO[code] || ['❔', '-'];
-    const icon = (!h.is_day[idx] && NIGHT[code]) ? NIGHT[code] : icon0;
-    const label = k === 0 ? '지금' : `${pad(hour)}시`;
-    html += `<div class="cell${k === 0 ? ' now' : ''}" title="${desc}">
-      <span class="h">${label}</span>
-      <span class="ic">${icon}</span>
-      <span class="t">${Math.round(h.temperature_2m[idx])}°</span>
-      <span class="p">${h.precipitation_probability[idx] ?? 0}%</span>
-    </div>`;
+    const blob = await shrinkImage(f);
+    await idbPut('bg', blob);
+    showPhoto(blob);
+  } catch (err) {
+    $('photoState').textContent = '사진을 넣지 못했어요. 다른 사진으로 해 주세요.';
+    return;
   }
-  $('rows').innerHTML = html;
-  return true;
+  renderPanel();
+};
+$('photoDel').onclick = async () => {
+  try { await idbPut('bg', null); } catch (e) {}
+  showPhoto(null);
+  renderPanel();
+};
+
+/* ---------- 색 ---------- */
+const BG_COLORS = ['#000000', '#101418', '#0b1a2e', '#0f2018', '#2a1016', '#1e1530', '#2b2118', '#ffffff'];
+const FG_COLORS = ['#ffffff', '#f3e9d2', '#ffd27a', '#9be7c4', '#a7c7ff', '#ffb3c7', '#9a9a9a', '#111111'];
+function luminance(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * ch(n >> 16 & 255) + 0.7152 * ch(n >> 8 & 255) + 0.0722 * ch(n & 255);
+}
+function applyTheme() {
+  const autoFg = photoUrl ? '#ffffff' : (luminance(prefs.bg) > 0.4 ? '#111111' : '#ffffff');
+  const fg = prefs.fg === 'auto' ? autoFg : prefs.fg;
+  const root = document.documentElement.style;
+  root.setProperty('--bg', prefs.bg);
+  root.setProperty('--fg', fg);
+  root.setProperty('--dim', prefs.dim / 100);
+  document.body.classList.toggle('light', luminance(fg) < 0.4);
+  document.body.classList.toggle('photo', !!photoUrl);
+  if (IS_APP && Android.setBg) Android.setBg(prefs.bg);
+}
+function swatchRow(box, colors, current, onPick, withAuto) {
+  box.replaceChildren();
+  if (withAuto) {
+    const a = document.createElement('button');
+    a.className = 'sw sw-auto' + (current === 'auto' ? ' sel' : '');
+    a.setAttribute('aria-label', '자동');
+    a.onclick = () => onPick('auto');
+    box.appendChild(a);
+  }
+  colors.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'sw' + (current === c ? ' sel' : '');
+    b.style.background = c;
+    b.setAttribute('aria-label', c);
+    b.onclick = () => onPick(c);
+    box.appendChild(b);
+  });
+  const custom = document.createElement('label');
+  custom.className = 'sw sw-custom' + (current !== 'auto' && !colors.includes(current) ? ' sel' : '');
+  custom.setAttribute('aria-label', '직접 고르기');
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = current === 'auto' ? '#ffffff' : current;
+  input.oninput = e => onPick(e.target.value, true);
+  input.onchange = () => renderPanel();
+  custom.appendChild(input);
+  box.appendChild(custom);
 }
 
-// 앱을 열자마자 저장해 둔 날씨부터 보여줌
-{
-  const cached = loadCachedWeather();
-  if (cached) renderWeather(cached.hourly);
+/* ---------- 위젯 켜기/끄기 · 순서 ---------- */
+function applyLayout() {
+  $('date').hidden = !prefs.showDate;
+  $('sec').hidden = !prefs.showSec;
+  $('w-calendar').hidden = !prefs.widgets.calendar;
+  $('w-weather').hidden = !prefs.widgets.weather;
+  prefs.order.forEach((k, i) => { $('w-' + k).style.order = i; });
+  updateMediaVisibility();
+  renderDock();
 }
-loadWeather();
-// 매 정시 직후 + 30분마다 갱신
-setInterval(() => {
-  const m = new Date().getMinutes();
-  if (m === 1 || m === 31) loadWeather();
-}, 60 * 1000);
 
-/* ---------- 화면 꺼짐 방지 ---------- */
-let lock = null;
-async function keepAwake() {
-  try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
+/* ---------- 자주 쓰는 앱 (앱에서만) ---------- */
+let allApps = null;
+const iconUrl = pkg => `/appicon/${encodeURIComponent(pkg)}`;
+function renderDock() {
+  const dock = $('w-apps');
+  const list = IS_APP && prefs.widgets.apps ? prefs.apps : [];
+  dock.hidden = list.length === 0;
+  dock.replaceChildren();
+  list.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'app';
+    b.setAttribute('aria-label', a.label + ' 열기');
+    const img = document.createElement('img');
+    img.src = iconUrl(a.pkg); img.alt = '';
+    const s = document.createElement('span');
+    s.textContent = a.label;
+    b.append(img, s);
+    b.onclick = () => Android.launchApp(a.pkg);
+    dock.appendChild(b);
+  });
 }
-keepAwake();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { keepAwake(); loadWeather(); }
-});
-$('clock').addEventListener('click', keepAwake);
-
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-
-/* ---------- 설정 저장 ---------- */
-const PREF_KEY = 'clock_prefs';
-let prefs = { night: true, nightFrom: 22, nightTo: 7, bg: '#000000', mediaHide: 60 };
-try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREF_KEY)) || {}); } catch (e) {}
-const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
+function openPicker() {
+  if (!allApps) { try { allApps = JSON.parse(Android.listApps()); } catch (e) { allApps = []; } }
+  $('appSearch').value = '';
+  renderPicker();
+  $('picker').hidden = false;
+}
+function renderPicker() {
+  const q = $('appSearch').value.trim().toLowerCase();
+  const box = $('appList');
+  box.replaceChildren();
+  allApps.filter(a => !q || a.label.toLowerCase().includes(q)).forEach(a => {
+    const idx = prefs.apps.findIndex(x => x.pkg === a.pkg);
+    const row = document.createElement('button');
+    row.className = 'app-row' + (idx >= 0 ? ' sel' : '');
+    const img = document.createElement('img');
+    img.src = iconUrl(a.pkg); img.alt = ''; img.loading = 'lazy';
+    const nm = document.createElement('span');
+    nm.className = 'nm'; nm.textContent = a.label;
+    const ck = document.createElement('span');
+    ck.className = 'ck'; ck.textContent = idx >= 0 ? idx + 1 : '';
+    row.append(img, nm, ck);
+    row.onclick = () => {
+      const i = prefs.apps.findIndex(x => x.pkg === a.pkg);
+      if (i >= 0) prefs.apps.splice(i, 1);
+      else if (prefs.apps.length < 10) prefs.apps.push({ pkg: a.pkg, label: a.label });
+      savePrefs(); renderPicker(); renderDock();
+    };
+    box.appendChild(row);
+  });
+}
+$('appSearch').oninput = renderPicker;
+$('pickerDone').onclick = () => { $('picker').hidden = true; renderPanel(); };
+$('pickApps').onclick = openPicker;
 
 /* ---------- 야간 모드 ---------- */
 let wasNight = null;
@@ -455,49 +776,10 @@ function applyNight() {
   if (night === wasNight) return;
   wasNight = night;
   document.body.classList.toggle('night', night);
-  if (window.Android) Android.setBrightness(night ? 0.02 : -1);
-}
-applyNight();
-setInterval(applyNight, 30 * 1000);
-
-/* ---------- 배경 색상 ---------- */
-const BG_COLORS = ['#000000', '#101418', '#0b1a2e', '#0f2018', '#2a1016', '#1e1530', '#2b2118', '#ffffff'];
-/* 배경 밝기(0~1) — 밝으면 글씨를 검정 계열로 */
-function luminance(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-  return 0.2126 * ch(n >> 16 & 255) + 0.7152 * ch(n >> 8 & 255) + 0.0722 * ch(n & 255);
-}
-function applyBg() {
-  document.documentElement.style.setProperty('--bg', prefs.bg);
-  document.body.classList.toggle('light', luminance(prefs.bg) > 0.4);
-  if (window.Android && Android.setBg) Android.setBg(prefs.bg);
-}
-applyBg();
-function renderSwatches() {
-  const box = $('swatches');
-  box.replaceChildren();
-  BG_COLORS.forEach(c => {
-    const b = document.createElement('button');
-    b.className = 'sw' + (prefs.bg === c ? ' sel' : '');
-    b.style.background = c;
-    b.setAttribute('aria-label', '배경 ' + c);
-    b.onclick = () => { prefs.bg = c; savePrefs(); applyBg(); renderSwatches(); };
-    box.appendChild(b);
-  });
-  const custom = document.createElement('label');
-  custom.className = 'sw sw-custom' + (BG_COLORS.includes(prefs.bg) ? '' : ' sel');
-  custom.setAttribute('aria-label', '직접 고르기');
-  const input = document.createElement('input');
-  input.type = 'color'; input.value = prefs.bg;
-  input.oninput = e => { prefs.bg = e.target.value; savePrefs(); applyBg(); };
-  input.onchange = () => renderSwatches();
-  custom.appendChild(input);
-  box.appendChild(custom);
+  if (IS_APP) Android.setBrightness(night ? 0.02 : -1);
 }
 
-/* ---------- 앱(APK) 연동: 배터리, 알림 아이콘, 미디어 ---------- */
-const IS_APP = !!window.Android;
+/* ---------- 앱 연동: 배터리, 알림 아이콘, 미디어 ---------- */
 $('batt').hidden = !IS_APP;
 document.querySelectorAll('.app-only').forEach(el => el.hidden = !IS_APP);
 
@@ -507,6 +789,7 @@ window.nativeBattery = (level, charging) => {
   $('batt').classList.toggle('charging', charging);
   $('batt').classList.toggle('low', !charging && level <= 15);
 };
+
 let lastIcons = [];
 function renderNotifs() {
   const box = $('notifs');
@@ -520,24 +803,25 @@ function renderNotifs() {
     box.appendChild(b);
     return;
   }
+  // 아이콘 모양만 가져와 글자 색으로 칠함
   lastIcons.slice(0, 8).forEach(src => {
-    const img = document.createElement('img');
-    img.src = src; img.alt = '';
-    box.appendChild(img);
+    const i = document.createElement('i');
+    i.style.webkitMaskImage = i.style.maskImage = `url("${src}")`;
+    box.appendChild(i);
   });
 }
 window.nativeNotifs = icons => { lastIcons = icons || []; renderNotifs(); };
-renderNotifs();
 
-const PLAY = 'M7 4v16l13-8z', PAUSE = 'M6 4h4v16H6zM14 4h4v16h-4z';
 /* 재생이 멈추면 설정한 시간(prefs.mediaHide초) 뒤에 카드를 숨김 */
+const PLAY = 'M7 4v16l13-8z', PAUSE = 'M6 4h4v16H6zM14 4h4v16h-4z';
 let lastMedia = null, pausedSince = null, hideTimer = null;
 function updateMediaVisibility() {
   clearTimeout(hideTimer);
-  if (!lastMedia || !lastMedia.title) { $('media').hidden = true; return; }
-  if (lastMedia.playing) { $('media').hidden = false; return; }
+  const card = $('w-media');
+  if (!prefs.widgets.media || !lastMedia || !lastMedia.title) { card.hidden = true; return; }
+  if (lastMedia.playing) { card.hidden = false; return; }
   const left = prefs.mediaHide * 1000 - (Date.now() - pausedSince);
-  $('media').hidden = left <= 0;
+  card.hidden = left <= 0;
   if (left > 0) hideTimer = setTimeout(updateMediaVisibility, left);
 }
 window.nativeMedia = m => {
@@ -560,28 +844,74 @@ for (let h = 0; h < 24; h++) {
   $('nightFrom').add(new Option(`${pad(h)}시`, h));
   $('nightTo').add(new Option(`${pad(h)}시`, h));
 }
-function openPanel() { renderPanel(); $('panel').hidden = false; }
-$('gearBtn').onclick = openPanel;
+const setToggle = (el, on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); };
+
+function renderWidgetOpts() {
+  const box = $('widgetOpts');
+  box.replaceChildren();
+  const keys = [...prefs.order, 'apps'].filter(k => k !== 'apps' || IS_APP);
+  keys.forEach(k => {
+    const row = document.createElement('div');
+    row.className = 'opt';
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl'; lbl.textContent = WIDGETS[k];
+    if (k === 'apps') { const s = document.createElement('small'); s.textContent = '화면 맨 아래(가로 화면은 시계 아래)에 놓여요'; lbl.appendChild(s); }
+    row.appendChild(lbl);
+    const oi = prefs.order.indexOf(k);
+    if (oi >= 0) {
+      const order = document.createElement('div');
+      order.className = 'order';
+      const up = document.createElement('button'), down = document.createElement('button');
+      up.textContent = '▲'; down.textContent = '▼';
+      up.setAttribute('aria-label', WIDGETS[k] + ' 위로'); down.setAttribute('aria-label', WIDGETS[k] + ' 아래로');
+      up.disabled = oi === 0; down.disabled = oi === prefs.order.length - 1;
+      const move = d => { const o = prefs.order; [o[oi], o[oi + d]] = [o[oi + d], o[oi]]; savePrefs(); applyLayout(); renderWidgetOpts(); };
+      up.onclick = () => move(-1); down.onclick = () => move(1);
+      order.append(up, down);
+      row.appendChild(order);
+    }
+    const t = document.createElement('button');
+    t.className = 'toggle';
+    t.setAttribute('aria-label', WIDGETS[k]);
+    setToggle(t, prefs.widgets[k]);
+    t.onclick = () => {
+      prefs.widgets[k] = !prefs.widgets[k]; savePrefs(); applyLayout(); setToggle(t, prefs.widgets[k]);
+      if (k === 'weather' && prefs.widgets.weather) loadWeather();
+    };
+    row.appendChild(t);
+    box.appendChild(row);
+  });
+}
+
 function renderPanel() {
-  renderSwatches();
-  $('nightBtn').textContent = prefs.night ? '켜짐' : '꺼짐';
-  $('nightBtn').classList.toggle('on', prefs.night);
+  renderWidgetOpts();
+  setToggle($('t-date'), prefs.showDate);
+  setToggle($('t-sec'), prefs.showSec);
+  setToggle($('nightBtn'), prefs.night);
   $('nightFrom').value = prefs.nightFrom;
   $('nightTo').value = prefs.nightTo;
   $('mediaHide').value = prefs.mediaHide;
+  $('dim').value = prefs.dim;
+  $('dimRow').hidden = !photoUrl;
+  $('photoDel').hidden = !photoUrl;
+  $('photoState').textContent = photoUrl ? '사진이 배경으로 쓰이고 있어요' : '사진을 고르면 배경 색상 대신 보여요';
+  $('appCount').textContent = prefs.apps.length ? `${prefs.apps.length}개 골랐어요` : '아직 고른 앱이 없어요';
+  swatchRow($('bgSwatches'), BG_COLORS, prefs.bg, (c, live) => { prefs.bg = c; savePrefs(); applyTheme(); if (!live) renderPanel(); });
+  swatchRow($('fgSwatches'), FG_COLORS, prefs.fg, (c, live) => { prefs.fg = c; savePrefs(); applyTheme(); if (!live) renderPanel(); }, true);
   if (IS_APP) {
     const n = Android.hasNotifAccess();
     $('notifBtn').textContent = n ? '허용됨' : '허용하기';
-    $('notifBtn').classList.toggle('on', n);
-    const a = Android.getAutoLaunch() && n && Android.canOverlay();
-    $('autoBtn').textContent = a ? '켜짐' : '꺼짐';
-    $('autoBtn').classList.toggle('on', a);
+    $('notifBtn').classList.toggle('primary', !n);
+    setToggle($('autoBtn'), Android.getAutoLaunch() && n && Android.canOverlay());
   }
 }
+$('t-date').onclick = () => { prefs.showDate = !prefs.showDate; savePrefs(); applyLayout(); renderPanel(); };
+$('t-sec').onclick = () => { prefs.showSec = !prefs.showSec; savePrefs(); applyLayout(); renderPanel(); };
 $('nightBtn').onclick = () => { prefs.night = !prefs.night; savePrefs(); wasNight = null; applyNight(); renderPanel(); };
 $('nightFrom').onchange = e => { prefs.nightFrom = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
 $('nightTo').onchange = e => { prefs.nightTo = +e.target.value; savePrefs(); wasNight = null; applyNight(); };
 $('mediaHide').onchange = e => { prefs.mediaHide = +e.target.value; savePrefs(); updateMediaVisibility(); };
+$('dim').oninput = e => { prefs.dim = +e.target.value; savePrefs(); applyTheme(); };
 $('notifBtn').onclick = () => { if (!Android.hasNotifAccess()) Android.openNotifAccess(); };
 $('autoBtn').onclick = () => {
   if (!Android.hasNotifAccess()) { Android.setAutoLaunch(true); Android.openNotifAccess(); return; }
@@ -589,19 +919,49 @@ $('autoBtn').onclick = () => {
   Android.setAutoLaunch(!Android.getAutoLaunch());
   renderPanel();
 };
+function openPanel() { renderPanel(); $('panel').hidden = false; }
+$('gearBtn').onclick = openPanel;
 $('closeBtn').onclick = () => { $('panel').hidden = true; };
 
 let pressTimer = null;
-$('clock').addEventListener('pointerdown', () => {
-  pressTimer = setTimeout(openPanel, 600);
-});
+$('clock').addEventListener('pointerdown', () => { pressTimer = setTimeout(openPanel, 600); });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
   $('clock').addEventListener(ev, () => clearTimeout(pressTimer)));
+
+/* ---------- 화면 꺼짐 방지 ---------- */
+async function keepAwake() {
+  try { await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+$('clock').addEventListener('click', keepAwake);
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  keepAwake();
+  loadWeather();
   renderNotifs();
   if (!$('panel').hidden) renderPanel();
 });
+
+/* ---------- 시작 ---------- */
+applyTheme();
+applyLayout();
+tick();
+setInterval(tick, 1000);
+applyNight();
+setInterval(applyNight, 30 * 1000);
+renderNotifs();
+{
+  const cached = loadCachedWeather();     // 저장해 둔 날씨부터 바로 보여줌
+  if (cached) renderWeather(cached.hourly);
+}
+loadWeather();
+setInterval(() => {                        // 매 정시 직후 + 30분마다 갱신
+  const m = new Date().getMinutes();
+  if (m === 1 || m === 31) loadWeather();
+}, 60 * 1000);
+keepAwake();
+idbGet('bg').then(b => { if (b) showPhoto(b); }).catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>

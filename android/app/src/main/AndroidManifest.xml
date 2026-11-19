@@ -7,6 +7,14 @@
     <!-- 충전 시 자동 실행(백그라운드에서 화면 띄우기)에 필요 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- 자주 쓰는 앱 고르기: 홈 화면에 나오는 앱 목록을 보기 위해 필요 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:label="탁상시계"
         android:icon="@mipmap/ic_launcher"

@@ -9,7 +9,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import android.webkit.ValueCallback;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.media.MediaMetadata;
@@ -40,7 +44,13 @@ import android.webkit.WebViewClient;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.io.ByteArrayInputStream;
+import java.text.Collator;
+import java.util.HashMap;
+import java.util.Map;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -71,6 +81,10 @@ public class MainActivity extends Activity {
     private WebView web;
     private boolean pageReady = false;
     private volatile String lastLoc = "";
+
+    private static final int REQ_FILE = 42;
+    private ValueCallback<Uri[]> fileCb;
+    private final Map<String, byte[]> iconCache = new HashMap<>();
 
     // ---- 현재 재생 중인 미디어 ----
     private MediaSessionManager msm;
@@ -118,6 +132,7 @@ public class MainActivity extends Activity {
         // 앱 안의 index.html을 https 주소로 제공 (위치 권한이 https에서만 동작)
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/appicon/", this::appIcon)
                 .build();
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -136,6 +151,20 @@ public class MainActivity extends Activity {
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb) {
                 cb.invoke(origin, true, true);
             }
+
+            /** 배경 사진 고르기 (<input type=file>) */
+            @Override
+            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params) {
+                if (fileCb != null) fileCb.onReceiveValue(null);
+                fileCb = cb;
+                try {
+                    startActivityForResult(params.createIntent(), REQ_FILE);
+                } catch (Exception e) {
+                    fileCb = null;
+                    return false;
+                }
+                return true;
+            }
         });
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
@@ -145,6 +174,38 @@ public class MainActivity extends Activity {
                     Manifest.permission.ACCESS_COARSE_LOCATION,
                     Manifest.permission.ACCESS_FINE_LOCATION}, 1);
         }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int result, Intent data) {
+        super.onActivityResult(req, result, data);
+        if (req == REQ_FILE && fileCb != null) {
+            fileCb.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
+            fileCb = null;
+        }
+    }
+
+    /** /appicon/<패키지> 로 앱 아이콘 PNG 제공 */
+    private WebResourceResponse appIcon(String path) {
+        String pkg = Uri.decode(path);
+        byte[] png;
+        synchronized (iconCache) { png = iconCache.get(pkg); }
+        if (png == null) {
+            try {
+                Drawable d = getPackageManager().getApplicationIcon(pkg);
+                int size = 144;
+                Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+                d.setBounds(0, 0, size, size);
+                d.draw(new Canvas(b));
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                b.compress(Bitmap.CompressFormat.PNG, 100, bos);
+                png = bos.toByteArray();
+                synchronized (iconCache) { iconCache.put(pkg, png); }
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return new WebResourceResponse("image/png", null, new ByteArrayInputStream(png));
     }
 
     @Override
@@ -382,6 +443,34 @@ public class MainActivity extends Activity {
 
     /** 웹 화면(index.html)에서 window.Android 로 호출 */
     class Bridge {
+        /** 실행할 수 있는 앱 목록 [{pkg, label}] (이름순) */
+        @JavascriptInterface public String listApps() {
+            PackageManager pm = getPackageManager();
+            Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> list = pm.queryIntentActivities(main, 0);
+            Map<String, String> apps = new HashMap<>();
+            for (ResolveInfo r : list) {
+                String pkg = r.activityInfo.packageName;
+                if (pkg.equals(getPackageName()) || apps.containsKey(pkg)) continue;
+                apps.put(pkg, r.loadLabel(pm).toString());
+            }
+            List<Map.Entry<String, String>> sorted = new ArrayList<>(apps.entrySet());
+            Collator col = Collator.getInstance(Locale.KOREAN);
+            sorted.sort((a, b) -> col.compare(a.getValue(), b.getValue()));
+            JSONArray out = new JSONArray();
+            for (Map.Entry<String, String> e : sorted) {
+                try { out.put(new JSONObject().put("pkg", e.getKey()).put("label", e.getValue())); } catch (Exception ignored) {}
+            }
+            return out.toString();
+        }
+
+        @JavascriptInterface public void launchApp(String pkg) {
+            Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (i == null) return;
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(i); } catch (Exception ignored) {}
+        }
+
         /** 위치 {"lat":..,"lon":..} 또는 빈 문자열 */
         @JavascriptInterface public String getLocation() { return lastLoc; }
 
