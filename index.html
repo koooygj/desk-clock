@@ -25,6 +25,7 @@
     --holiday: #ff7b7b;
     --sat: #8fb8ff;
     --u: min(1vw, .5vh);
+    --font: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
   }
   @media (orientation: landscape) { :root { --u: min(.5vw, 1vh); } }
 
@@ -32,7 +33,7 @@
   [hidden] { display: none !important; }
   html, body { height: 100%; background: var(--bg); color: var(--fg); }
   body {
-    font-family: -apple-system, "Roboto", "Noto Sans KR", sans-serif;
+    font-family: var(--font);
     user-select: none; overflow: hidden; -webkit-tap-highlight-color: transparent;
   }
   body.light {
@@ -231,6 +232,13 @@
   .sw-custom { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
   .sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
   .opt input[type=range] { width: 46%; accent-color: #30a46c; }
+  .font-opt { width: 100%; text-align: left; background: none !important; border-radius: 0 !important; padding: 14px 16px !important;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #26262b !important; }
+  .font-opt:last-child { border-bottom: 0 !important; }
+  .font-opt .sample { font-size: 18px; }
+  .font-opt .sample small { display: inline; font-size: 13px; color: #8a8a90; margin-left: 8px; }
+  .font-opt .ck { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #444; flex: none; }
+  .font-opt.sel .ck { border: 6px solid #30a46c; }
   .panel .hint { color: #6a6a70; font-size: 13px; text-align: center; margin-top: 10px; }
 
   /* 앱 고르기 */
@@ -329,6 +337,9 @@
       </div>
       <input type="file" id="photoInput" accept="image/*" hidden>
 
+      <h3>글씨체</h3>
+      <div class="group" id="fontOpts"></div>
+
       <h3>야간 모드</h3>
       <div class="group">
         <div class="opt"><div class="lbl">야간 모드<small>정해진 시간에 화면을 어둡게</small></div><button class="toggle" id="nightBtn" aria-label="야간 모드"></button></div>
@@ -378,7 +389,7 @@ const PREF_KEY = 'clock_prefs';
 const WIDGETS = { media: '재생 중인 미디어', calendar: '달력', weather: '날씨', apps: '자주 쓰는 앱' };
 let prefs = {
   night: true, nightFrom: 22, nightTo: 7,
-  bg: '#000000', fg: 'auto', dim: 35,
+  bg: '#000000', fg: 'auto', dim: 35, font: 'system',
   mediaHide: 60,
   showDate: true, showSec: true,
   widgets: { media: true, calendar: true, weather: true, apps: true },
@@ -700,6 +711,63 @@ function swatchRow(box, colors, current, onPick, withAuto) {
   box.appendChild(custom);
 }
 
+/* ---------- 글씨체 (고른 글꼴만 인터넷에서 받아옴, 한 번 받으면 저장돼 재사용) ---------- */
+const FONTS = {
+  system: { label: '기본 글꼴', family: '-apple-system, "Roboto", "Noto Sans KR", sans-serif' },
+  pretendard: { label: '프리텐다드', family: '"Pretendard Variable", Pretendard, sans-serif',
+    css: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css' },
+  noto: { label: '노토 산스', family: '"Noto Sans KR", sans-serif',
+    css: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@200;400;600&display=swap' },
+  nanum: { label: '나눔고딕', family: '"Nanum Gothic", sans-serif',
+    css: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap' },
+  scdream: { label: '에스코어 드림', family: '"S-Core Dream", sans-serif',
+    faces: [[200, '2ExtraLight'], [400, '4Regular'], [600, '6Bold']] }
+};
+const loadedFonts = new Set();
+function loadFont(key) {
+  const f = FONTS[key];
+  if (!f || loadedFonts.has(key)) return;
+  loadedFonts.add(key);
+  if (f.css) {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = f.css;
+    document.head.appendChild(l);
+  }
+  if (f.faces) {
+    const st = document.createElement('style');
+    st.textContent = f.faces.map(([w, file]) =>
+      `@font-face{font-family:"S-Core Dream";font-weight:${w};font-display:swap;` +
+      `src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_six@1.2/S-CoreDream-${file}.woff") format("woff");}`).join('');
+    document.head.appendChild(st);
+  }
+}
+function applyFont() {
+  const key = FONTS[prefs.font] ? prefs.font : 'system';
+  loadFont(key);
+  document.documentElement.style.setProperty('--font', FONTS[key].family);
+}
+function renderFontOpts() {
+  const box = $('fontOpts');
+  box.replaceChildren();
+  Object.entries(FONTS).forEach(([key, f]) => {
+    const b = document.createElement('button');
+    b.className = 'font-opt' + ((prefs.font || 'system') === key ? ' sel' : '');
+    const sample = document.createElement('span');
+    sample.className = 'sample';
+    sample.style.fontFamily = f.family;
+    sample.textContent = f.label;
+    const num = document.createElement('small');
+    num.textContent = '12:34';
+    num.style.fontFamily = f.family;
+    sample.appendChild(num);
+    const ck = document.createElement('span');
+    ck.className = 'ck';
+    b.append(sample, ck);
+    b.onclick = () => { prefs.font = key; savePrefs(); applyFont(); renderFontOpts(); };
+    box.appendChild(b);
+  });
+}
+
 /* ---------- 위젯 켜기/끄기 · 순서 ---------- */
 function applyLayout() {
   $('date').hidden = !prefs.showDate;
@@ -885,6 +953,7 @@ function renderWidgetOpts() {
 
 function renderPanel() {
   renderWidgetOpts();
+  renderFontOpts();
   setToggle($('t-date'), prefs.showDate);
   setToggle($('t-sec'), prefs.showSec);
   setToggle($('nightBtn'), prefs.night);
@@ -943,6 +1012,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- 시작 ---------- */
+applyFont();
 applyTheme();
 applyLayout();
 tick();
