@@ -108,6 +108,9 @@
     display: flex; flex-direction: column; justify-content: flex-end; gap: calc(var(--u) * 3);
   }
   .widgets::-webkit-scrollbar { display: none; }
+  /* 컴퓨터처럼 큰 가로 화면에서 카드가 너무 넓어지지 않게 */
+  @media (orientation: landscape) { .widgets { width: 100%; max-width: calc(var(--u) * 112); justify-self: center; } }
+  body.idle, body.idle * { cursor: none !important; }
   /* 가로 화면: 오른쪽 칸에 세 위젯이 다 들어가도록 조금 촘촘하게 */
   @media (orientation: landscape) {
     /* 폰처럼 가로로 긴 화면은 높이가 모자라서 위젯만 조금 더 작게 (태블릿은 그대로) */
@@ -170,6 +173,8 @@
   body.photo .cal-grid .today span { color: #000; }
   body.photo.light .cal-grid .today span { color: #fff; }
 
+  @media (orientation: portrait) { body.no-cal-portrait #w-calendar { display: none; } }
+
   /* 날씨 */
   .loc { font-size: calc(var(--u) * 2.9); opacity: .55; text-align: center; margin-bottom: calc(var(--u) * 2.4); }
   .rows { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(var(--u) * 1); }
@@ -221,6 +226,8 @@
   .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform .15s; }
   .toggle.on { background: #30a46c !important; }
   .toggle.on::after { transform: translateX(20px); }
+  .panel button.mini { margin-top: 6px; padding: 5px 10px; font-size: 13px; border-radius: 8px; color: #b8b8be; }
+  .panel button.mini.on { color: #7ee2a8; }
   .order { display: flex; gap: 6px; }
   .order button { padding: 6px 10px; font-size: 14px; }
   .order button:disabled { opacity: .3; }
@@ -253,6 +260,7 @@
   .app-row img { width: 40px; height: 40px; border-radius: 22%; flex: none; }
   .app-row .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .app-row .ck { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #444; display: flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+  .app-row.full { opacity: .4; }
   .app-row.sel .ck { background: #30a46c; border-color: #30a46c; color: #fff; }
 </style>
 </head>
@@ -262,6 +270,7 @@
   <div class="status" id="status">
     <div class="notifs" id="notifs"></div>
     <div class="right">
+      <button class="gear" id="fsBtn" aria-label="전체 화면" hidden><svg viewBox="0 0 24 24"><path id="fsPath" d="M4 4h6v2H6v4H4zM14 4h6v6h-2V6h-4zM4 14h2v4h4v2H4zM18 14h2v6h-6v-2h4z"/></svg></button>
       <button class="gear" id="gearBtn" aria-label="설정"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3h-4l-.4 2.7a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1L11 21h4l.4-2.7a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
       <div class="batt" id="batt" hidden><span id="battPct"></span><div class="shell"><div class="fill" id="battFill"></div></div></div>
     </div>
@@ -374,7 +383,7 @@
       <input id="appSearch" type="search" placeholder="앱 이름 검색" aria-label="앱 이름 검색">
       <button id="pickerDone">완료</button>
     </div>
-    <div class="picker-sub">누른 순서대로 독에 놓여요. 최대 10개.</div>
+    <div class="picker-sub" id="pickerSub">누른 순서대로 독에 놓여요. 최대 5개.</div>
     <div class="app-list" id="appList"></div>
   </div>
 
@@ -391,7 +400,7 @@ let prefs = {
   night: true, nightFrom: 22, nightTo: 7,
   bg: '#000000', fg: 'auto', dim: 35, font: 'system',
   mediaHide: 60,
-  showDate: true, showSec: true,
+  showDate: true, showSec: true, calPortrait: true,
   widgets: { media: true, calendar: true, weather: true, apps: true },
   order: ['media', 'calendar', 'weather'],
   apps: []
@@ -720,8 +729,8 @@ const FONTS = {
     css: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@200;400;600&display=swap' },
   nanum: { label: '나눔고딕', family: '"Nanum Gothic", sans-serif',
     css: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap' },
-  scdream: { label: '에스코어 드림', family: '"S-Core Dream", sans-serif',
-    faces: [[200, '2ExtraLight'], [400, '4Regular'], [600, '6Bold']] }
+  suit: { label: '수트 (SUIT)', family: '"SUIT Variable", SUIT, sans-serif',
+    css: 'https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2.0.5/fonts/variable/woff2/SUIT-Variable.css' }
 };
 const loadedFonts = new Set();
 function loadFont(key) {
@@ -733,16 +742,10 @@ function loadFont(key) {
     l.rel = 'stylesheet'; l.href = f.css;
     document.head.appendChild(l);
   }
-  if (f.faces) {
-    const st = document.createElement('style');
-    st.textContent = f.faces.map(([w, file]) =>
-      `@font-face{font-family:"S-Core Dream";font-weight:${w};font-display:swap;` +
-      `src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_six@1.2/S-CoreDream-${file}.woff") format("woff");}`).join('');
-    document.head.appendChild(st);
-  }
 }
 function applyFont() {
-  const key = FONTS[prefs.font] ? prefs.font : 'system';
+  if (!FONTS[prefs.font]) prefs.font = 'system';   // 예전에 고른 글꼴이 빠졌으면 기본으로
+  const key = prefs.font;
   loadFont(key);
   document.documentElement.style.setProperty('--font', FONTS[key].family);
 }
@@ -773,6 +776,7 @@ function applyLayout() {
   $('date').hidden = !prefs.showDate;
   $('sec').hidden = !prefs.showSec;
   $('w-calendar').hidden = !prefs.widgets.calendar;
+  document.body.classList.toggle('no-cal-portrait', !prefs.calPortrait);
   $('w-weather').hidden = !prefs.widgets.weather;
   prefs.order.forEach((k, i) => { $('w-' + k).style.order = i; });
   updateMediaVisibility();
@@ -781,6 +785,8 @@ function applyLayout() {
 
 /* ---------- 자주 쓰는 앱 (앱에서만) ---------- */
 let allApps = null;
+const MAX_APPS = 5;
+prefs.apps = prefs.apps.slice(0, MAX_APPS);
 const iconUrl = pkg => `/appicon/${encodeURIComponent(pkg)}`;
 function renderDock() {
   const dock = $('w-apps');
@@ -813,7 +819,7 @@ function renderPicker() {
   allApps.filter(a => !q || a.label.toLowerCase().includes(q)).forEach(a => {
     const idx = prefs.apps.findIndex(x => x.pkg === a.pkg);
     const row = document.createElement('button');
-    row.className = 'app-row' + (idx >= 0 ? ' sel' : '');
+    row.className = 'app-row' + (idx >= 0 ? ' sel' : '') + (idx < 0 && prefs.apps.length >= MAX_APPS ? ' full' : '');
     const img = document.createElement('img');
     img.src = iconUrl(a.pkg); img.alt = ''; img.loading = 'lazy';
     const nm = document.createElement('span');
@@ -824,7 +830,7 @@ function renderPicker() {
     row.onclick = () => {
       const i = prefs.apps.findIndex(x => x.pkg === a.pkg);
       if (i >= 0) prefs.apps.splice(i, 1);
-      else if (prefs.apps.length < 10) prefs.apps.push({ pkg: a.pkg, label: a.label });
+      else if (prefs.apps.length < MAX_APPS) prefs.apps.push({ pkg: a.pkg, label: a.label });
       savePrefs(); renderPicker(); renderDock();
     };
     box.appendChild(row);
@@ -938,6 +944,17 @@ function renderWidgetOpts() {
       order.append(up, down);
       row.appendChild(order);
     }
+    if (k === 'calendar') {
+      const s = document.createElement('small');
+      s.textContent = '세로 화면에서도 보기';
+      const pt = document.createElement('button');
+      pt.className = 'mini' + (prefs.calPortrait ? ' on' : '');
+      pt.textContent = prefs.calPortrait ? '세로 화면: 보임' : '세로 화면: 숨김';
+      pt.setAttribute('aria-pressed', prefs.calPortrait);
+      pt.onclick = () => { prefs.calPortrait = !prefs.calPortrait; savePrefs(); applyLayout(); renderWidgetOpts(); };
+      s.replaceChildren(pt);
+      lbl.appendChild(s);
+    }
     const t = document.createElement('button');
     t.className = 'toggle';
     t.setAttribute('aria-label', WIDGETS[k]);
@@ -1010,6 +1027,46 @@ document.addEventListener('visibilitychange', () => {
   renderNotifs();
   if (!$('panel').hidden) renderPanel();
 });
+
+/* ---------- 컴퓨터(크롬) ---------- */
+// 전체 화면: 오른쪽 위 버튼, 시계 두 번 클릭, 또는 F 키
+const FS_IN = 'M4 4h6v2H6v4H4zM14 4h6v6h-2V6h-4zM4 14h2v4h4v2H4zM18 14h2v6h-6v-2h4z';
+const FS_OUT = 'M8 4h2v6H4V8h4zM14 4h2v4h4v2h-6zM4 14h6v6H8v-4H4zM14 14h6v2h-4v4h-2z';
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen().catch(() => {});
+}
+if (!IS_APP && document.fullscreenEnabled) {
+  $('fsBtn').hidden = false;
+  $('fsBtn').onclick = toggleFullscreen;
+  $('clock').addEventListener('dblclick', toggleFullscreen);
+  document.addEventListener('keydown', e => {
+    if ((e.key === 'f' || e.key === 'F') && $('panel').hidden && !e.target.closest('input, select')) toggleFullscreen();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    $('fsPath').setAttribute('d', document.fullscreenElement ? FS_OUT : FS_IN);
+    $('fsBtn').setAttribute('aria-label', document.fullscreenElement ? '전체 화면 끝내기' : '전체 화면');
+  });
+}
+// 마우스를 3초 동안 안 움직이면 커서 숨김
+let idleTimer = null;
+function wake() {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if ($('panel').hidden) document.body.classList.add('idle'); }, 3000);
+}
+if (!IS_APP) { ['mousemove', 'mousedown', 'keydown'].forEach(ev => document.addEventListener(ev, wake)); wake(); }
+// 노트북이면 배터리 표시 (배터리가 없는 데스크톱은 표시 안 함)
+if (!IS_APP && navigator.getBattery) {
+  navigator.getBattery().then(bt => {
+    const desktop = bt.charging && bt.level === 1 && bt.chargingTime === 0 && bt.dischargingTime === Infinity;
+    if (desktop) return;
+    const show = () => { $('batt').hidden = false; nativeBattery(Math.round(bt.level * 100), bt.charging); };
+    show();
+    bt.addEventListener('levelchange', show);
+    bt.addEventListener('chargingchange', show);
+  }).catch(() => {});
+}
 
 /* ---------- 시작 ---------- */
 applyFont();
