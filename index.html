@@ -811,6 +811,7 @@ function openPicker() {
   $('appSearch').value = '';
   renderPicker();
   $('picker').hidden = false;
+  pushUi('picker');
 }
 function renderPicker() {
   const q = $('appSearch').value.trim().toLowerCase();
@@ -837,7 +838,7 @@ function renderPicker() {
   });
 }
 $('appSearch').oninput = renderPicker;
-$('pickerDone').onclick = () => { $('picker').hidden = true; renderPanel(); };
+$('pickerDone').onclick = () => closeTop();
 $('pickApps').onclick = openPicker;
 
 /* ---------- 야간 모드 ---------- */
@@ -1005,9 +1006,30 @@ $('autoBtn').onclick = () => {
   Android.setAutoLaunch(!Android.getAutoLaunch());
   renderPanel();
 };
-function openPanel() { renderPanel(); $('panel').hidden = false; }
+function openPanel() {
+  if (!$('panel').hidden) return;
+  renderPanel(); $('panel').hidden = false;
+  pushUi('panel');
+}
+
+/* 뒤로 가기: 앱 선택 → 설정 → 시계 순서로 닫힘
+   - 안드로이드 앱: 기기의 뒤로 가기 버튼이 handleBack()을 부름
+   - 웹(폰 브라우저·컴퓨터): 브라우저 뒤로 가기와 Esc 키 */
+function hideTop() {
+  if (!$('picker').hidden) { $('picker').hidden = true; renderPanel(); return true; }
+  if (!$('panel').hidden) { $('panel').hidden = true; return true; }
+  return false;
+}
+function pushUi(name) { if (!IS_APP) history.pushState({ ui: name }, ''); }
+function closeTop() {
+  if (!IS_APP && history.state && history.state.ui) history.back();   // popstate에서 닫힘
+  else hideTop();
+}
+window.handleBack = () => hideTop();
+window.addEventListener('popstate', () => { hideTop(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTop(); });
 $('gearBtn').onclick = openPanel;
-$('closeBtn').onclick = () => { $('panel').hidden = true; };
+$('closeBtn').onclick = () => closeTop();
 
 let pressTimer = null;
 $('clock').addEventListener('pointerdown', () => { pressTimer = setTimeout(openPanel, 600); });

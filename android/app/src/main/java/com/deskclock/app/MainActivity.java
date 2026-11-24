@@ -261,6 +261,16 @@ public class MainActivity extends Activity {
         if (current == this) current = null;
     }
 
+    /** 뒤로 가기: 설정·앱 고르기 화면이 열려 있으면 그것만 닫고, 시계 화면이면 원래대로 나감 */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (web == null || !pageReady) { super.onBackPressed(); return; }
+        web.evaluateJavascript("window.handleBack ? handleBack() : false", r -> {
+            if (!"true".equals(r)) MainActivity.super.onBackPressed();
+        });
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
