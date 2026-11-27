@@ -108,6 +108,7 @@
     display: flex; flex-direction: column; justify-content: flex-end; gap: calc(var(--u) * 3);
   }
   .widgets::-webkit-scrollbar { display: none; }
+  .widgets, .widgets * { touch-action: pan-y; }
   /* 컴퓨터처럼 큰 가로 화면에서 카드가 너무 넓어지지 않게 */
   @media (orientation: landscape) { .widgets { width: 100%; max-width: calc(var(--u) * 112); justify-self: center; } }
   body.idle, body.idle * { cursor: none !important; }
@@ -314,7 +315,11 @@
   /* 타이머 시간 맞추기 (▲▼) */
   .setter { display: flex; align-items: center; font-size: calc(var(--ring) * .16); font-weight: 200; font-variant-numeric: tabular-nums; }
   .setter .col { display: flex; flex-direction: column; align-items: center; }
-  .setter .col span { line-height: 1.05; }
+  .setter .tnum {
+    width: 1.3em; text-align: center; font: inherit; color: inherit; background: none; line-height: 1.05;
+    border: 0; border-bottom: 1px dashed transparent; border-radius: 0; padding: 0; caret-color: currentColor;
+  }
+  .setter .tnum:focus { outline: none; border-bottom-color: currentColor; background: var(--card); }
   .setter .col small { font-size: calc(var(--ring) * .034); opacity: .5; }
   .setter button { background: none; border: 0; color: inherit; opacity: .55; font-size: calc(var(--ring) * .05); padding: calc(var(--ring) * .012) calc(var(--ring) * .05); line-height: 1; }
   .setter .colon { opacity: .45; padding: 0 calc(var(--ring) * .01) calc(var(--ring) * .04); }
@@ -1422,7 +1427,22 @@ function buildSetter() {
     const up = document.createElement('button'), down = document.createElement('button');
     up.textContent = '▲'; down.textContent = '▼';
     up.setAttribute('aria-label', name + ' 늘리기'); down.setAttribute('aria-label', name + ' 줄이기');
-    const val = document.createElement('span'); val.id = 'tv-' + k;
+    // 숫자를 눌러 직접 입력 (두 자리 입력하면 다음 칸으로)
+    const val = document.createElement('input');
+    val.id = 'tv-' + k; val.className = 'tnum';
+    val.type = 'text'; val.inputMode = 'numeric'; val.maxLength = 2; val.autocomplete = 'off';
+    val.setAttribute('aria-label', name);
+    val.addEventListener('focus', () => { val.select(); });
+    val.addEventListener('input', () => {
+      val.value = val.value.replace(/\D/g, '').slice(0, 2);
+      if (val.value.length === 2) {
+        commitInputs();
+        const next = { h: 'tv-m', m: 'tv-s' }[k];
+        if (next) $(next).focus(); else val.blur();
+      }
+    });
+    val.addEventListener('keydown', e => { if (e.key === 'Enter') val.blur(); });
+    val.addEventListener('blur', commitInputs);
     const lbl = document.createElement('small'); lbl.textContent = name;
     const step = d => {
       if (tools.tm.state !== 'idle') return;
@@ -1436,12 +1456,27 @@ function buildSetter() {
     box.appendChild(col);
   });
 }
+function commitInputs() {
+  if (tools.tm.state !== 'idle') return;
+  const v = k => Math.max(0, parseInt($('tv-' + k).value, 10) || 0);
+  const h = Math.min(23, v('h')), m = Math.min(59, v('m')), sec = Math.min(59, v('s'));
+  const ms = (h * 3600 + m * 60 + sec) * 1000;
+  if (ms !== tools.tm.dur) setDuration(ms); else renderTm();
+}
 // 누르고 있으면 계속 바뀜
 function holdRepeat(btn, fn) {
-  let t1 = null, t2 = null;
+  let t1 = null, t2 = null, repeated = false;
   const stop = () => { clearTimeout(t1); clearInterval(t2); };
-  btn.addEventListener('pointerdown', e => { e.stopPropagation(); fn(); t1 = setTimeout(() => { t2 = setInterval(fn, 90); }, 400); });
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+  btn.addEventListener('pointerdown', () => {
+    repeated = false;
+    t1 = setTimeout(() => {
+      if (swiping) return;
+      repeated = true; fn();
+      t2 = setInterval(() => { if (swiping) stop(); else fn(); }, 90);
+    }, 450);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, stop));
+  btn.addEventListener('click', () => { if (!repeated) fn(); });   // 한 번 누르면 1칸
 }
 function setDuration(ms) {
   tools.tm.dur = ms;
@@ -1473,9 +1508,10 @@ function renderTm() {
   $('tPresets').hidden = !idle;
   if (idle) {
     const s3 = Math.round(t.dur / 1000);
-    $('tv-h').textContent = pad(Math.floor(s3 / 3600));
-    $('tv-m').textContent = pad(Math.floor(s3 % 3600 / 60));
-    $('tv-s').textContent = pad(s3 % 60);
+    const put = (k, v) => { const el = $('tv-' + k); if (document.activeElement !== el && el.value !== v) el.value = v; };
+    put('h', pad(Math.floor(s3 / 3600)));
+    put('m', pad(Math.floor(s3 % 3600 / 60)));
+    put('s', pad(s3 % 60));
   } else {
     setText($('tDigits'), fmtTime(left, true, t.dur >= 3600000));
   }
@@ -1602,6 +1638,7 @@ function renderToolOpts() {
 
 /* ================= 옆으로 넘기기 ================= */
 let page = 1;
+let swiping = false;
 const pager = $('pager');
 function goPage(i) {
   page = Math.max(0, Math.min(2, i));
@@ -1614,34 +1651,43 @@ function goPage(i) {
 }
 document.querySelectorAll('#dots button').forEach(b => { b.onclick = () => goPage(+b.dataset.page); });
 {
-  let sx = 0, sy = 0, pid = null, dragging = false;
+  // 버튼 위에서 시작해도 넘길 수 있음 (넘겼으면 그 버튼은 눌리지 않음). 입력칸만 제외.
+  let sx = 0, sy = 0, lastX = 0, pid = null, dragging = false, swallowClick = false;
   pager.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (e.target.closest('button, input, select, a')) return;
-    sx = e.clientX; sy = e.clientY; pid = e.pointerId; dragging = false;
+    if (e.target.closest('input, select')) return;
+    sx = lastX = e.clientX; sy = e.clientY; pid = e.pointerId; dragging = false; swallowClick = false;
   });
   pager.addEventListener('pointermove', e => {
     if (e.pointerId !== pid) return;
+    lastX = e.clientX;
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if (!dragging) {
       if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-        dragging = true; pager.classList.add('dragging'); clearTimeout(pressTimer);
+        dragging = true; swiping = true; swallowClick = true;
+        pager.classList.add('dragging'); clearTimeout(pressTimer);
         try { pager.setPointerCapture(pid); } catch (err) {}
       } else return;
     }
     const off = (page === 0 && dx > 0) || (page === 2 && dx < 0) ? dx / 3 : dx;   // 끝에서는 덜 밀림
     pager.style.transform = `translateX(calc(-100vw * ${page} + ${off}px))`;
   });
+  // 손을 뗀 위치 대신 마지막으로 움직인 위치로 판단
+  // (스크롤 칸 위에서는 폰이 터치를 취소하며 위치를 0으로 보내는 경우가 있어 반대로 넘어가던 문제)
   const end = e => {
     if (e.pointerId !== pid) return;
     pid = null;
     if (!dragging) return;
     dragging = false;
-    const dx = e.clientX - sx, th = Math.min(80, innerWidth * .18);
+    setTimeout(() => { swiping = false; }, 0);
+    const dx = lastX - sx, th = Math.min(80, innerWidth * .18);
     goPage(dx < -th ? page + 1 : dx > th ? page - 1 : page);
   };
   pager.addEventListener('pointerup', end);
   pager.addEventListener('pointercancel', end);
+  pager.addEventListener('click', e => {
+    if (swallowClick) { e.stopPropagation(); e.preventDefault(); swallowClick = false; }
+  }, true);
 }
 document.addEventListener('keydown', e => {
   if (!$('panel').hidden || e.target.closest('input, select')) return;
