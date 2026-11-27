@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
     private volatile String lastLoc = "";
 
     private static final int REQ_FILE = 42;
+    private static final int REQ_NOTIF = 43;
     private ValueCallback<Uri[]> fileCb;
     private final Map<String, byte[]> iconCache = new HashMap<>();
 
@@ -211,6 +212,11 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == REQ_NOTIF) {
+            boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+            js("window.onNotifPermission && onNotifPermission(" + ok + ")");
+            return;
+        }
         updateLocation();
         js("typeof loadWeather === 'function' && loadWeather()");
     }
@@ -245,6 +251,8 @@ public class MainActivity extends Activity {
         super.onResume();
         current = this;
         hideSystemBars();
+        // 돌아왔으면 앱이 직접 알려주므로 타이머 알림은 지움
+        getSystemService(android.app.NotificationManager.class).cancel(TimerReceiver.NOTIF_ID);
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         updateLocation();
         if (hasNotifAccess(this) && !NotifListener.isConnected()) {
@@ -454,6 +462,40 @@ public class MainActivity extends Activity {
 
     /** 웹 화면(index.html)에서 window.Android 로 호출 */
     class Bridge {
+        /** 알림을 보낼 수 있는지 (안드로이드 13부터는 권한 필요) */
+        @JavascriptInterface public boolean canNotify() {
+            if (android.os.Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
+            return getSystemService(android.app.NotificationManager.class).areNotificationsEnabled();
+        }
+
+        /** 알림 권한 요청. 결과는 onNotifPermission(true/false) 로 돌려줌 */
+        @JavascriptInterface public void requestNotif() {
+            runOnUiThread(() -> {
+                if (android.os.Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+                } else {
+                    js("window.onNotifPermission && onNotifPermission(" + canNotify() + ")");
+                }
+            });
+        }
+
+        /** 이 앱의 알림 설정 화면 (예전에 거절해서 다시 물을 수 없을 때) */
+        @JavascriptInterface public void openNotifSettings() {
+            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+        }
+
+        /** 타이머 끝나는 시각(epoch 밀리초)에 알람 예약 / 취소 */
+        @JavascriptInterface public void scheduleTimer(double endAt) {
+            TimerReceiver.schedule(MainActivity.this, (long) endAt);
+        }
+
+        @JavascriptInterface public void cancelTimer() {
+            TimerReceiver.cancel(MainActivity.this);
+        }
+
         /** 타이머 끝 알림 진동 */
         @JavascriptInterface public void vibrate(int ms) {
             try {

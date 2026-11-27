@@ -336,6 +336,18 @@
   .page-timer.fill .ctl button.main { background: #fff; color: #000; border-color: #fff; }
   body.on-fill .status, body.on-fill .dots { --fg: #fff; color: #fff; mix-blend-mode: difference; }
 
+  /* 알림 숨기기: 위쪽 알림 아이콘만 숨김 (설정·배터리는 보임) */
+  body.hide-notifs .notifs { visibility: hidden; }
+
+  /* 묻는 창 */
+  .ask { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .ask-box { background: #1a1a1e; color: #f2f2f2; border-radius: 18px; padding: 24px 22px 18px; width: 100%; max-width: 360px; font-size: 16px; }
+  .ask-box p { font-size: 18px; font-weight: 600; line-height: 1.4; }
+  .ask-box small { display: block; color: #9a9aa0; font-size: 14px; line-height: 1.5; margin-top: 8px; }
+  .ask-btns { display: flex; gap: 10px; margin-top: 20px; }
+  .ask-btns button { flex: 1; border: 0; border-radius: 12px; padding: 13px 0; font-size: 16px; font-family: inherit; background: #2a2a30; color: #f2f2f2; }
+  .ask-btns button.main { background: #f2f2f2; color: #111; font-weight: 600; }
+
   /* 설정 탭 */
   .tabs { display: flex; background: #1a1a1e; border-radius: 12px; padding: 4px; gap: 4px; position: sticky; top: 0; z-index: 1; }
   .tabs button { flex: 1; background: none !important; color: #8a8a90 !important; padding: 10px 0 !important; border-radius: 9px !important; }
@@ -452,6 +464,9 @@
       </div>
 
       <div class="tab" data-tab="clock">
+        <div class="group">
+          <div class="opt"><div class="lbl">알림 숨기기<small>위쪽 알림 아이콘을 숨겨요. 설정과 배터리는 그대로 보여요</small></div><button class="toggle hide-notifs-t" aria-label="알림 숨기기"></button></div>
+        </div>
 
       <h3>화면 구성</h3>
       <div class="group" id="widgetOpts"></div>
@@ -517,6 +532,9 @@
       </div>
 
       <div class="tab" data-tab="sw" hidden>
+        <div class="group">
+          <div class="opt"><div class="lbl">알림 숨기기<small>위쪽 알림 아이콘을 숨겨요. 설정과 배터리는 그대로 보여요</small></div><button class="toggle hide-notifs-t" aria-label="알림 숨기기"></button></div>
+        </div>
         <h3>표시</h3>
         <div class="group">
           <div class="opt"><div class="lbl">시간 표시</div><div class="seg" id="swFmt"></div></div>
@@ -533,6 +551,9 @@
       </div>
 
       <div class="tab" data-tab="timer" hidden>
+        <div class="group">
+          <div class="opt"><div class="lbl">알림 숨기기<small>위쪽 알림 아이콘을 숨겨요. 설정과 배터리는 그대로 보여요</small></div><button class="toggle hide-notifs-t" aria-label="알림 숨기기"></button></div>
+        </div>
         <h3>원형 시간 바</h3>
         <div class="group">
           <div class="opt"><div class="lbl">한 바퀴<small>원이 한 바퀴 도는 시간</small></div><select id="tLap" aria-label="한 바퀴"></select></div>
@@ -544,6 +565,7 @@
         <h3>끝났을 때</h3>
         <div class="group">
           <div class="opt"><div class="lbl">알림 소리<small>진동은 항상 함께 울려요</small></div><button class="toggle" id="tSound" aria-label="알림 소리"></button></div>
+          <div class="opt app-only"><div class="lbl">앱이 꺼져도 알림<small id="tBgState">앱을 닫아도 시간이 되면 알림으로 울려요</small></div><button class="toggle" id="tBg" aria-label="앱이 꺼져도 알림"></button></div>
         </div>
         <h3>배경 채우기 테마</h3>
         <div class="group">
@@ -556,6 +578,15 @@
         </div>
         <div class="hint">자동: 둘 다 자동이면 흰색과 검정, 하나만 자동이면 그 색은 다른 배경색의 보색</div>
       </div>
+    </div>
+  </div>
+
+  <!-- 타이머 백그라운드 알림 동의 -->
+  <div class="ask" id="askBg" hidden role="dialog" aria-modal="true" aria-labelledby="askTitle">
+    <div class="ask-box">
+      <p id="askTitle">타이머가 꺼져도 알림을 받으시겠어요?</p>
+      <small id="askText">앱을 닫거나 다른 앱을 쓰는 중에도, 시간이 되면 알림으로 소리와 진동이 울려요.</small>
+      <div class="ask-btns"><button id="askNo">아니요</button><button class="main" id="askYes">예</button></div>
     </div>
   </div>
 
@@ -587,7 +618,8 @@ let prefs = {
   order: ['media', 'calendar', 'weather'],
   apps: [],
   sw: { fmt: 'hms', lap: 60, c1: 'auto', c2: 'auto' },
-  timer: { lap: 0, c1: 'auto', c2: 'auto', sound: true, fill: false, mode: 'h', f1: 'auto', f2: 'auto', last: 300 }
+  timer: { lap: 0, c1: 'auto', c2: 'auto', sound: true, fill: false, mode: 'h', f1: 'auto', f2: 'auto', last: 300, bg: null },
+  hideNotifs: false
 };
 try {
   const saved = JSON.parse(localStorage.getItem(PREF_KEY)) || {};
@@ -1016,6 +1048,7 @@ function applyLayout() {
   $('sec').hidden = !prefs.showSec;
   $('w-calendar').hidden = !prefs.widgets.calendar;
   document.body.classList.toggle('no-cal-portrait', !prefs.calPortrait);
+  document.body.classList.toggle('hide-notifs', !!prefs.hideNotifs);
   $('w-weather').hidden = !prefs.widgets.weather;
   prefs.order.forEach((k, i) => { $('w-' + k).style.order = i; });
   updateMediaVisibility();
@@ -1257,6 +1290,7 @@ function openPanel() {
    - 안드로이드 앱: 기기의 뒤로 가기 버튼이 handleBack()을 부름
    - 웹(폰 브라우저·컴퓨터): 브라우저 뒤로 가기와 Esc 키 */
 function hideTop() {
+  if (!$('askBg').hidden) { closeAsk(false); return true; }
   if (!$('picker').hidden) { $('picker').hidden = true; renderPanel(); return true; }
   if (!$('panel').hidden) { $('panel').hidden = true; return true; }
   return false;
@@ -1501,7 +1535,7 @@ function paintFill(p, c1, c2) {
 }
 function renderTm() {
   const t = tools.tm;
-  if (t.state === 'run' && t.endAt <= Date.now()) { t.state = 'done'; saveTools(); startAlarm(); }
+  if (t.state === 'run' && t.endAt <= Date.now()) { t.state = 'done'; saveTools(); startAlarm(); syncNativeAlarm(); }
   const left = tmLeft(), idle = t.state === 'idle';
   $('tSetter').hidden = !idle;
   $('tDigits').hidden = idle;
@@ -1544,12 +1578,13 @@ $('tMain').onclick = () => {
   else if (t.state === 'run') { t.left = Math.max(0, t.endAt - Date.now()); t.state = 'pause'; }
   else if (t.state === 'pause') { t.endAt = Date.now() + t.left; t.state = 'run'; }
   else if (t.state === 'done') { stopAlarm(); t.state = 'idle'; }
-  saveTools(); renderTm();
+  saveTools(); renderTm(); syncNativeAlarm();
+  if (t.state === 'run' && IS_APP && prefs.timer.bg === null) askBackground();   // 처음 시작할 때 한 번만 물어봄
 };
 $('tReset').onclick = () => {
   const t = tools.tm;
   if (t.state === 'idle') { setDuration(0); return; }
-  stopAlarm(); t.state = 'idle'; saveTools(); renderTm();
+  stopAlarm(); t.state = 'idle'; saveTools(); renderTm(); syncNativeAlarm();
 };
 
 /* --- 알림 (소리 + 진동) --- */
@@ -1585,6 +1620,43 @@ function startAlarm() {
 function stopAlarm() { clearInterval(alarmTimer); alarmTimer = null; }
 
 function renderTools() { renderSw(); renderTm(); }
+
+/* --- 앱이 꺼져도 울리는 타이머 (안드로이드 알람 + 알림) --- */
+function syncNativeAlarm() {
+  if (!IS_APP || !Android.scheduleTimer) return;
+  const t = tools.tm;
+  if (t.state === 'run' && prefs.timer.bg && Android.canNotify()) Android.scheduleTimer(t.endAt);
+  else Android.cancelTimer();
+}
+// "예"를 누른 경우에만 알림 권한을 요청
+let askResolve = null;
+function askBackground() {
+  return new Promise(res => {
+    askResolve = res;
+    $('askBg').hidden = false;
+    $('askYes').focus();
+  });
+}
+function closeAsk(answer) {
+  $('askBg').hidden = true;
+  const r = askResolve; askResolve = null;
+  if (!r) return;
+  if (!answer) { prefs.timer.bg = false; savePrefs(); syncNativeAlarm(); renderToolOpts(); r(false); return; }
+  window.onNotifPermission = ok => {
+    window.onNotifPermission = null;
+    prefs.timer.bg = ok; savePrefs(); syncNativeAlarm(); renderToolOpts();
+    if (!ok) $('tBgState').textContent = '알림이 꺼져 있어요. 폰 설정에서 이 앱의 알림을 허용해 주세요';
+    r(ok);
+  };
+  Android.requestNotif();
+}
+$('askYes').onclick = () => closeAsk(true);
+$('askNo').onclick = () => closeAsk(false);
+$('tBg').onclick = () => {
+  if (prefs.timer.bg && Android.canNotify()) { prefs.timer.bg = false; savePrefs(); syncNativeAlarm(); renderToolOpts(); return; }
+  if (prefs.timer.bg && !Android.canNotify()) { Android.openNotifSettings(); return; }   // 예전에 거절한 경우
+  askBackground();
+};
 buildSetter();
 
 /* --- 설정: 스톱워치 · 타이머 탭 --- */
@@ -1609,6 +1681,9 @@ $('tLap').add(new Option('전체 시간', 0));
 for (let m = 5; m <= 60; m += 5) $('tLap').add(new Option(`${m}분`, m));
 $('swLap').onchange = e => { prefs.sw.lap = +e.target.value; savePrefs(); renderTools(); };
 $('tLap').onchange = e => { prefs.timer.lap = +e.target.value; savePrefs(); renderTools(); };
+document.querySelectorAll('.hide-notifs-t').forEach(b => {
+  b.onclick = () => { prefs.hideNotifs = !prefs.hideNotifs; savePrefs(); applyLayout(); renderToolOpts(); };
+});
 $('tSound').onclick = () => { prefs.timer.sound = !prefs.timer.sound; savePrefs(); renderToolOpts(); if (prefs.timer.sound) { unlockAudio(); beep(); } };
 $('tFill').onclick = () => { prefs.timer.fill = !prefs.timer.fill; savePrefs(); renderTools(); renderToolOpts(); };
 
@@ -1627,6 +1702,14 @@ function renderToolOpts() {
   const tc = ringColors(prefs.timer.c1, prefs.timer.c2);
   autoDots($('tAuto1'), [tc[0]]); autoDots($('tAuto2'), [tc[1]]);
   setToggle($('tSound'), prefs.timer.sound);
+  if (IS_APP && Android.canNotify) {
+    const on = !!prefs.timer.bg && Android.canNotify();
+    setToggle($('tBg'), on);
+    $('tBgState').textContent = prefs.timer.bg && !Android.canNotify()
+      ? '알림이 꺼져 있어요. 누르면 폰 알림 설정이 열려요'
+      : '앱을 닫아도 시간이 되면 알림으로 울려요';
+  }
+  document.querySelectorAll('.hide-notifs-t').forEach(b => setToggle(b, !!prefs.hideNotifs));
   setToggle($('tFill'), prefs.timer.fill);
   seg($('tMode'), [['h', '가로'], ['v', '세로'], ['sweep', '시계 방향'], ['circle', '원형 (밖→안)']], prefs.timer.mode,
     v => { prefs.timer.mode = v; savePrefs(); renderTools(); renderToolOpts(); });
@@ -1711,6 +1794,7 @@ requestAnimationFrame(frame);
 applyFont();
 goPage(1);
 applyTheme();
+syncNativeAlarm();     // 앱을 다시 열었을 때 예약 상태를 맞춤
 applyLayout();
 tick();
 setInterval(tick, 1000);
