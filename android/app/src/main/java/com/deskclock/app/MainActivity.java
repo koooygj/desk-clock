@@ -128,6 +128,7 @@ public class MainActivity extends Activity {
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
         ws.setGeolocationEnabled(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);   // 타이머 알림 소리
 
         // 앱 안의 index.html을 https 주소로 제공 (위치 권한이 https에서만 동작)
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
@@ -453,6 +454,14 @@ public class MainActivity extends Activity {
 
     /** 웹 화면(index.html)에서 window.Android 로 호출 */
     class Bridge {
+        /** 타이머 끝 알림 진동 */
+        @JavascriptInterface public void vibrate(int ms) {
+            try {
+                android.os.Vibrator v = getSystemService(android.os.Vibrator.class);
+                if (v != null) v.vibrate(android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } catch (Exception ignored) {}
+        }
+
         /** 실행할 수 있는 앱 목록 [{pkg, label}] (이름순) */
         @JavascriptInterface public String listApps() {
             PackageManager pm = getPackageManager();

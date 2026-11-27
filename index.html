@@ -199,7 +199,7 @@
   }
 
   /* 야간 모드 */
-  body.night .layout, body.night .status { opacity: .35; }
+  body.night .pager, body.night .status, body.night .dots { opacity: .35; }
   body.night .bg-photo { opacity: .4; }
 
   /* ---------- 설정 ---------- */
@@ -262,6 +262,86 @@
   .app-row .ck { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #444; display: flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
   .app-row.full { opacity: .4; }
   .app-row.sel .ck { background: #30a46c; border-color: #30a46c; color: #fff; }
+
+  /* ---------- 옆으로 넘기기: 타이머 | 시계 | 스톱워치 ---------- */
+  .pager {
+    position: fixed; inset: 0; display: flex; width: 300vw; touch-action: pan-y;
+    transform: translateX(calc(-100vw * var(--page, 1)));
+    transition: transform .35s cubic-bezier(.2, .8, .2, 1);
+  }
+  .pager.dragging { transition: none; }
+  .page { position: relative; width: 100vw; height: 100%; flex: none; overflow: hidden; }
+  .dots { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 10px); display: flex; justify-content: center; gap: 10px; z-index: 4; pointer-events: none; }
+  .dots button { pointer-events: auto; width: 7px; height: 7px; border-radius: 50%; border: 0; padding: 0; background: var(--fg); opacity: .25; }
+  .dots button.on { opacity: .85; }
+
+  /* ---------- 스톱워치 · 타이머 공통 ---------- */
+  .tool {
+    position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: calc(var(--u) * 6);
+    padding: calc(env(safe-area-inset-top) + 8vh) max(20px, calc(var(--u) * 6)) calc(env(safe-area-inset-bottom) + 6vh);
+  }
+  .ring-wrap { --ring: min(80vw, 46vh); position: relative; width: var(--ring); height: var(--ring); flex: none; }
+  @media (orientation: landscape) {
+    .tool { flex-direction: row; gap: calc(var(--u) * 10); }
+    .ring-wrap { --ring: min(44vw, 72vh); }
+  }
+  .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2.2; }
+  .ring .track { stroke: var(--line); }
+  .ring .arc { stroke-linecap: round; }
+  .ring-in { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .tool-label { font-size: calc(var(--ring) * .05); opacity: .55; letter-spacing: .1em; margin-bottom: calc(var(--ring) * .02); }
+  .digits { font-size: calc(var(--ring) * .17); font-weight: 200; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .digits.big { font-size: calc(var(--ring) * .24); }
+  .sub { font-size: calc(var(--ring) * .042); opacity: .5; margin-top: calc(var(--ring) * .025); min-height: 1.3em; }
+  .tool-side { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 5); }
+  .ctl { display: flex; gap: calc(var(--u) * 4); }
+  .ctl button {
+    font-family: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    font-size: calc(var(--u) * 3.6); padding: calc(var(--u) * 2.6) 0; width: calc(var(--u) * 28);
+  }
+  .ctl button.main { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 600; }
+  body.photo .ctl button.main { color: #000; }
+  body.photo.light .ctl button.main { color: #fff; }
+  .ctl button:disabled { opacity: .35; }
+  .presets { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--u) * 2); max-width: calc(var(--u) * 86); }
+  .presets button {
+    font-family: inherit; color: inherit; background: none; border: 1px solid var(--line); border-radius: 999px;
+    font-size: calc(var(--u) * 3); padding: calc(var(--u) * 1.4) calc(var(--u) * 3.6);
+  }
+
+  /* 타이머 시간 맞추기 (▲▼) */
+  .setter { display: flex; align-items: center; font-size: calc(var(--ring) * .16); font-weight: 200; font-variant-numeric: tabular-nums; }
+  .setter .col { display: flex; flex-direction: column; align-items: center; }
+  .setter .col span { line-height: 1.05; }
+  .setter .col small { font-size: calc(var(--ring) * .034); opacity: .5; }
+  .setter button { background: none; border: 0; color: inherit; opacity: .55; font-size: calc(var(--ring) * .05); padding: calc(var(--ring) * .012) calc(var(--ring) * .05); line-height: 1; }
+  .setter .colon { opacity: .45; padding: 0 calc(var(--ring) * .01) calc(var(--ring) * .04); }
+
+  .page-timer.done .ring-wrap { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .page-timer.done .ring-wrap { animation: none; } .pager { transition: none; } }
+
+  /* 배경 채우기 테마: 글씨는 배경과 반전되어 두 색 위에서 모두 보임 */
+  .fill-bg { position: absolute; inset: 0; }
+  .page-timer.fill .ring { visibility: hidden; }
+  .page-timer.fill .tool { color: #fff; mix-blend-mode: difference; --line: rgba(255,255,255,.6); }
+  .page-timer.fill .ctl button, .page-timer.fill .presets button { background: none; border-color: currentColor; }
+  .page-timer.fill .ctl button.main { background: #fff; color: #000; border-color: #fff; }
+  body.on-fill .status, body.on-fill .dots { --fg: #fff; color: #fff; mix-blend-mode: difference; }
+
+  /* 설정 탭 */
+  .tabs { display: flex; background: #1a1a1e; border-radius: 12px; padding: 4px; gap: 4px; position: sticky; top: 0; z-index: 1; }
+  .tabs button { flex: 1; background: none !important; color: #8a8a90 !important; padding: 10px 0 !important; border-radius: 9px !important; }
+  .tabs button.on { background: #34343c !important; color: #f2f2f2 !important; font-weight: 600; }
+  .tab { display: flex; flex-direction: column; gap: 12px; }
+  .seg { display: flex; flex-wrap: wrap; background: #111114; border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg button { background: none !important; color: #8a8a90 !important; padding: 7px 12px !important; border-radius: 8px !important; font-size: 14px !important; }
+  .seg button.on { background: #34343c !important; color: #f2f2f2 !important; }
+  .opt.col { flex-direction: column; align-items: stretch; }
+  .auto-now { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 6px; }
+  .auto-now i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #555; display: inline-block; }
 </style>
 </head>
 <body>
@@ -276,6 +356,29 @@
     </div>
   </div>
 
+  <div class="pager" id="pager">
+  <!-- 왼쪽: 타이머 -->
+  <section class="page page-timer" id="pageTimer" aria-label="타이머">
+    <div class="fill-bg" id="fillBg" hidden></div>
+    <div class="tool">
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="track" id="tTrack" cx="50" cy="50" r="47"/><circle class="arc" id="tArc" cx="50" cy="50" r="47" pathLength="100"/></svg>
+        <div class="ring-in">
+          <div class="tool-label">타이머</div>
+          <div class="setter" id="tSetter"></div>
+          <div class="digits" id="tDigits" hidden></div>
+          <div class="sub" id="tSub"></div>
+        </div>
+      </div>
+      <div class="tool-side">
+        <div class="presets" id="tPresets"></div>
+        <div class="ctl"><button id="tReset">지우기</button><button class="main" id="tMain">시작</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 가운데: 시계 -->
+  <section class="page page-clock" id="pageClock">
   <main class="layout">
     <section class="clock" id="clock">
       <div class="date" id="date"></div>
@@ -307,11 +410,43 @@
 
     <nav class="card dock" id="w-apps" hidden></nav>
   </main>
+  </section>
+
+  <!-- 오른쪽: 스톱워치 -->
+  <section class="page page-sw" id="pageSw" aria-label="스톱워치">
+    <div class="tool">
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="track" id="sTrack" cx="50" cy="50" r="47"/><circle class="arc" id="sArc" cx="50" cy="50" r="47" pathLength="100"/></svg>
+        <div class="ring-in">
+          <div class="tool-label">스톱워치</div>
+          <div class="digits" id="sDigits"></div>
+          <div class="sub" id="sSub"></div>
+        </div>
+      </div>
+      <div class="tool-side">
+        <div class="ctl"><button id="sReset">초기화</button><button class="main" id="sMain">시작</button></div>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <nav class="dots" id="dots">
+    <button data-page="0" aria-label="타이머 화면"></button>
+    <button data-page="1" aria-label="시계 화면"></button>
+    <button data-page="2" aria-label="스톱워치 화면"></button>
+  </nav>
 
   <!-- 설정 -->
   <div class="panel" id="panel" hidden>
     <div class="panel-inner">
       <div class="panel-top"><h2>설정</h2><button class="primary" id="closeBtn">완료</button></div>
+      <div class="tabs" role="tablist">
+        <button data-tab="clock" role="tab">시계</button>
+        <button data-tab="sw" role="tab">스톱워치</button>
+        <button data-tab="timer" role="tab">타이머</button>
+      </div>
+
+      <div class="tab" data-tab="clock">
 
       <h3>화면 구성</h3>
       <div class="group" id="widgetOpts"></div>
@@ -373,7 +508,49 @@
           <button class="toggle" id="autoBtn" aria-label="충전 시 자동 실행"></button>
         </div>
       </div>
-      <div class="hint">시계를 길게 눌러도 설정이 열려요</div>
+      <div class="hint">시계를 길게 눌러도 설정이 열려요 · 옆으로 밀면 타이머(왼쪽)와 스톱워치(오른쪽)</div>
+      </div>
+
+      <div class="tab" data-tab="sw" hidden>
+        <h3>표시</h3>
+        <div class="group">
+          <div class="opt"><div class="lbl">시간 표시</div><div class="seg" id="swFmt"></div></div>
+        </div>
+        <h3>원형 시간 바</h3>
+        <div class="group">
+          <div class="opt"><div class="lbl">한 바퀴<small>원이 한 바퀴 도는 시간</small></div><select id="swLap" aria-label="한 바퀴"></select></div>
+          <div class="opt"><div class="lbl">색 1<small>홀수 바퀴 <span class="auto-now" id="swAuto1"></span></small></div></div>
+          <div class="swatches" id="swC1"></div>
+          <div class="opt"><div class="lbl">색 2<small>짝수 바퀴 <span class="auto-now" id="swAuto2"></span></small></div></div>
+          <div class="swatches" id="swC2"></div>
+        </div>
+        <div class="hint">자동: 둘 다 자동이면 흰색과 배경의 보색, 하나만 자동이면 그 색은 배경의 보색</div>
+      </div>
+
+      <div class="tab" data-tab="timer" hidden>
+        <h3>원형 시간 바</h3>
+        <div class="group">
+          <div class="opt"><div class="lbl">한 바퀴<small>원이 한 바퀴 도는 시간</small></div><select id="tLap" aria-label="한 바퀴"></select></div>
+          <div class="opt"><div class="lbl">색 1<small>마지막 바퀴 <span class="auto-now" id="tAuto1"></span></small></div></div>
+          <div class="swatches" id="tC1"></div>
+          <div class="opt"><div class="lbl">색 2<small>그 앞 바퀴 <span class="auto-now" id="tAuto2"></span></small></div></div>
+          <div class="swatches" id="tC2"></div>
+        </div>
+        <h3>끝났을 때</h3>
+        <div class="group">
+          <div class="opt"><div class="lbl">알림 소리<small>진동은 항상 함께 울려요</small></div><button class="toggle" id="tSound" aria-label="알림 소리"></button></div>
+        </div>
+        <h3>배경 채우기 테마</h3>
+        <div class="group">
+          <div class="opt"><div class="lbl">배경 채우기<small>배경색 1로 차 있다가 시간이 갈수록 배경색 2로 바뀌어요</small></div><button class="toggle" id="tFill" aria-label="배경 채우기"></button></div>
+          <div class="opt col"><div class="lbl">채우는 방식</div><div class="seg" id="tMode"></div></div>
+          <div class="opt"><div class="lbl">배경색 1<small>처음 색 <span class="auto-now" id="tFAuto1"></span></small></div></div>
+          <div class="swatches" id="tF1"></div>
+          <div class="opt"><div class="lbl">배경색 2<small>바뀌는 색 <span class="auto-now" id="tFAuto2"></span></small></div></div>
+          <div class="swatches" id="tF2"></div>
+        </div>
+        <div class="hint">자동: 둘 다 자동이면 흰색과 검정, 하나만 자동이면 그 색은 다른 배경색의 보색</div>
+      </div>
     </div>
   </div>
 
@@ -403,11 +580,14 @@ let prefs = {
   showDate: true, showSec: true, calPortrait: true,
   widgets: { media: true, calendar: true, weather: true, apps: true },
   order: ['media', 'calendar', 'weather'],
-  apps: []
+  apps: [],
+  sw: { fmt: 'hms', lap: 60, c1: 'auto', c2: 'auto' },
+  timer: { lap: 0, c1: 'auto', c2: 'auto', sound: true, fill: false, mode: 'h', f1: 'auto', f2: 'auto', last: 300 }
 };
 try {
   const saved = JSON.parse(localStorage.getItem(PREF_KEY)) || {};
-  prefs = { ...prefs, ...saved, widgets: { ...prefs.widgets, ...(saved.widgets || {}) } };
+  prefs = { ...prefs, ...saved, widgets: { ...prefs.widgets, ...(saved.widgets || {}) },
+    sw: { ...prefs.sw, ...(saved.sw || {}) }, timer: { ...prefs.timer, ...(saved.timer || {}) } };
 } catch (e) {}
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} };
 
@@ -626,9 +806,25 @@ async function idbGet(key) {
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
 }
+// 사진 전체의 평균 색 (글자 색·시간 바 자동 색에 씀)
+let photoAvg = null;
+async function averageColor(blob) {
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement('canvas');
+  c.width = c.height = 24;
+  const g = c.getContext('2d');
+  g.drawImage(bmp, 0, 0, 24, 24);
+  const d = g.getImageData(0, 0, 24, 24).data;
+  let r = 0, gr = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
+  const n = d.length / 4;
+  return rgbToHex(r / n, gr / n, b / n);
+}
 function showPhoto(blob) {
   if (photoUrl) URL.revokeObjectURL(photoUrl);
   photoUrl = blob ? URL.createObjectURL(blob) : null;
+  photoAvg = null;
+  if (blob) averageColor(blob).then(c => { photoAvg = c; applyTheme(); }).catch(() => {});
   $('bgPhoto').hidden = !photoUrl;
   $('bgPhoto').style.backgroundImage = photoUrl ? `url("${photoUrl}")` : '';
   applyTheme();
@@ -680,8 +876,45 @@ function luminance(hex) {
   const ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   return 0.2126 * ch(n >> 16 & 255) + 0.7152 * ch(n >> 8 & 255) + 0.0722 * ch(n & 255);
 }
+const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const rgbToHex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let h = 0, s = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  }
+  return [h, s, l];
+}
+function hslToHex(h, s, l) {
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return rgbToHex(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+const mixHex = (a, b, t) => { const A = hexToRgb(a), B = hexToRgb(b); return rgbToHex(...A.map((v, i) => v + (B[i] - v) * t)); };
+// 너무 쨍하지 않은 보색: 색상환 반대편, 채도는 30~50%, 밝기는 원래 색과 반대쪽
+// forText면 글자로 읽히도록 밝기 차이를 더 크게
+function softComplement(hex, forText) {
+  const [h, s, l] = rgbToHsl(...hexToRgb(hex));
+  const gray = s < .12;                       // 검정·흰색·회색은 반대 색이 없어서 차분한 파랑 계열로
+  const h2 = gray ? 210 : (h + 180) % 360;
+  const s2 = gray ? .3 : Math.min(.5, Math.max(.3, s));
+  const l2 = forText ? (l > .5 ? .2 : .85) : (l > .5 ? .36 : .68);
+  return hslToHex(h2, s2, l2);
+}
+// 글자 뒤에 실제로 보이는 배경색 (사진이면 평균 색에 '어둡게'를 반영)
+function surfaceColor() {
+  if (!photoUrl || !photoAvg) return prefs.bg;
+  const dark = mixHex(photoAvg, '#000000', prefs.dim / 100);
+  return luminance(dark) > .4 ? mixHex(photoAvg, '#ffffff', prefs.dim / 100) : dark;
+}
 function applyTheme() {
-  const autoFg = photoUrl ? '#ffffff' : (luminance(prefs.bg) > 0.4 ? '#111111' : '#ffffff');
+  const autoFg = photoUrl
+    ? (photoAvg ? softComplement(surfaceColor(), true) : '#ffffff')
+    : (luminance(prefs.bg) > 0.4 ? '#111111' : '#ffffff');
   const fg = prefs.fg === 'auto' ? autoFg : prefs.fg;
   const root = document.documentElement.style;
   root.setProperty('--bg', prefs.bg);
@@ -690,6 +923,7 @@ function applyTheme() {
   document.body.classList.toggle('light', luminance(fg) < 0.4);
   document.body.classList.toggle('photo', !!photoUrl);
   if (IS_APP && Android.setBg) Android.setBg(prefs.bg);
+  if (typeof renderTools === 'function') renderTools();
 }
 function swatchRow(box, colors, current, onPick, withAuto) {
   box.replaceChildren();
@@ -972,6 +1206,7 @@ function renderWidgetOpts() {
 function renderPanel() {
   renderWidgetOpts();
   renderFontOpts();
+  renderToolOpts();
   setToggle($('t-date'), prefs.showDate);
   setToggle($('t-sec'), prefs.showSec);
   setToggle($('nightBtn'), prefs.night);
@@ -1008,6 +1243,7 @@ $('autoBtn').onclick = () => {
 };
 function openPanel() {
   if (!$('panel').hidden) return;
+  setTab(['timer', 'clock', 'sw'][page]);
   renderPanel(); $('panel').hidden = false;
   pushUi('panel');
 }
@@ -1020,12 +1256,23 @@ function hideTop() {
   if (!$('panel').hidden) { $('panel').hidden = true; return true; }
   return false;
 }
+function setTab(t) {
+  document.querySelectorAll('.tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
+  document.querySelectorAll('.tab').forEach(sec => { sec.hidden = sec.dataset.tab !== t; });
+  $('panel').scrollTop = 0;
+}
+document.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => setTab(b.dataset.tab); });
 function pushUi(name) { if (!IS_APP) history.pushState({ ui: name }, ''); }
 function closeTop() {
   if (!IS_APP && history.state && history.state.ui) history.back();   // popstate에서 닫힘
   else hideTop();
 }
-window.handleBack = () => hideTop();
+// 설정이 없으면, 타이머·스톱워치 화면에서는 시계 화면으로
+window.handleBack = () => {
+  if (hideTop()) return true;
+  if (page !== 1) { goPage(1); return true; }
+  return false;
+};
 window.addEventListener('popstate', () => { hideTop(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTop(); });
 $('gearBtn').onclick = openPanel;
@@ -1090,8 +1337,318 @@ if (!IS_APP && navigator.getBattery) {
   }).catch(() => {});
 }
 
+
+/* ================= 스톱워치 · 타이머 ================= */
+const RING_COLORS = ['#ffffff', '#9be7c4', '#a7c7ff', '#ffd27a', '#ffb3c7', '#c9b6ff', '#ff9f7a', '#111111'];
+const FILL_COLORS = ['#ffffff', '#111111', '#f3e9d2', '#1f3a5f', '#2f5d50', '#5a2a3a', '#ffd27a', '#a7c7ff'];
+
+function ringColors(c1, c2) {
+  const surf = surfaceColor();
+  const plain = luminance(surf) > .5 ? '#111111' : '#ffffff';   // 흰색 (밝은 배경에서는 검정)
+  const comp = softComplement(surf);
+  if (c1 === 'auto' && c2 === 'auto') return [plain, comp];
+  if (c1 === 'auto') return [comp, c2];
+  if (c2 === 'auto') return [c1, comp];
+  return [c1, c2];
+}
+function fillColors() {
+  const { f1, f2 } = prefs.timer;
+  if (f1 === 'auto' && f2 === 'auto') return ['#ffffff', '#111111'];
+  if (f1 === 'auto') return [softComplement(f2), f2];
+  if (f2 === 'auto') return [f1, softComplement(f1)];
+  return [f1, f2];
+}
+// frac: 지금 바퀴에서 채워진 비율, lap: 몇 번째 바퀴(0부터). 바퀴마다 색 1·색 2가 번갈아 덮음
+function drawRing(track, arc, frac, lap, colors) {
+  const cur = colors[lap % 2], prev = lap > 0 ? colors[(lap - 1) % 2] : '';
+  track.style.stroke = prev;
+  arc.style.stroke = cur;
+  const v = Math.max(0, Math.min(1, frac)) * 100;
+  arc.setAttribute('stroke-dasharray', `${v.toFixed(2)} 100`);
+  arc.style.visibility = v < .3 ? 'hidden' : '';
+}
+const fmtTime = (ms, withSec, forceHours) => {
+  const t = Math.ceil(ms / 1000 - 1e-6);
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s2 = t % 60;
+  if (!withSec) return `${pad(h)}:${pad(m)}`;
+  return h || forceHours ? `${pad(h)}:${pad(m)}:${pad(s2)}` : `${pad(m)}:${pad(s2)}`;
+};
+
+// 동작 상태는 앱을 껐다 켜도 이어지도록 저장
+const TOOLS_KEY = 'clock_tools';
+let tools = { sw: { running: false, startAt: 0, acc: 0 }, tm: { state: 'idle', dur: prefs.timer.last * 1000, endAt: 0, left: 0 } };
+try { const t = JSON.parse(localStorage.getItem(TOOLS_KEY)); if (t && t.sw && t.tm) tools = t; } catch (e) {}
+const saveTools = () => { try { localStorage.setItem(TOOLS_KEY, JSON.stringify(tools)); } catch (e) {} };
+
+/* --- 스톱워치 --- */
+const swElapsed = () => tools.sw.acc + (tools.sw.running ? Date.now() - tools.sw.startAt : 0);
+function renderSw() {
+  const e = swElapsed(), hm = prefs.sw.fmt === 'hm';
+  $('sDigits').textContent = hm ? fmtTime(e + 999, false) : fmtTime(e + 999, true, true);
+  $('sDigits').classList.toggle('big', hm);
+  const L = prefs.sw.lap * 60000, lap = Math.floor(e / L);
+  drawRing($('sTrack'), $('sArc'), (e - lap * L) / L, lap, ringColors(prefs.sw.c1, prefs.sw.c2));
+  $('sSub').textContent = e > 0 ? `${lap + 1}바퀴째 · 한 바퀴 ${prefs.sw.lap}분` : `한 바퀴 ${prefs.sw.lap}분`;
+  $('sMain').textContent = tools.sw.running ? '일시정지' : e > 0 ? '계속' : '시작';
+  $('sReset').disabled = e === 0;
+}
+$('sMain').onclick = () => {
+  const sw = tools.sw;
+  if (sw.running) { sw.acc += Date.now() - sw.startAt; sw.running = false; }
+  else { sw.startAt = Date.now(); sw.running = true; }
+  saveTools(); renderSw();
+};
+$('sReset').onclick = () => { tools.sw = { running: false, startAt: 0, acc: 0 }; saveTools(); renderSw(); };
+
+/* --- 타이머 --- */
+function tmLeft() {
+  const t = tools.tm;
+  if (t.state === 'run') return Math.max(0, t.endAt - Date.now());
+  if (t.state === 'pause') return t.left;
+  if (t.state === 'done') return 0;
+  return t.dur;
+}
+function buildSetter() {
+  const box = $('tSetter');
+  box.replaceChildren();
+  [['h', '시간', 3600, 23], ['m', '분', 60, 59], ['s', '초', 1, 59]].forEach(([k, name, unit, max], i) => {
+    if (i) { const c = document.createElement('span'); c.className = 'colon'; c.textContent = ':'; box.appendChild(c); }
+    const col = document.createElement('div');
+    col.className = 'col';
+    const up = document.createElement('button'), down = document.createElement('button');
+    up.textContent = '▲'; down.textContent = '▼';
+    up.setAttribute('aria-label', name + ' 늘리기'); down.setAttribute('aria-label', name + ' 줄이기');
+    const val = document.createElement('span'); val.id = 'tv-' + k;
+    const lbl = document.createElement('small'); lbl.textContent = name;
+    const step = d => {
+      if (tools.tm.state !== 'idle') return;
+      const t = Math.round(tools.tm.dur / 1000);
+      const parts = { h: Math.floor(t / 3600), m: Math.floor(t % 3600 / 60), s: t % 60 };
+      parts[k] = (parts[k] + d + max + 1) % (max + 1);
+      setDuration((parts.h * 3600 + parts.m * 60 + parts.s) * 1000);
+    };
+    holdRepeat(up, () => step(1)); holdRepeat(down, () => step(-1));
+    col.append(up, val, down, lbl);
+    box.appendChild(col);
+  });
+}
+// 누르고 있으면 계속 바뀜
+function holdRepeat(btn, fn) {
+  let t1 = null, t2 = null;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  btn.addEventListener('pointerdown', e => { e.stopPropagation(); fn(); t1 = setTimeout(() => { t2 = setInterval(fn, 90); }, 400); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+}
+function setDuration(ms) {
+  tools.tm.dur = ms;
+  prefs.timer.last = Math.round(ms / 1000); savePrefs();
+  saveTools(); renderTm();
+}
+[['1분', 60], ['3분', 180], ['5분', 300], ['10분', 600], ['15분', 900], ['30분', 1800], ['1시간', 3600]].forEach(([label, sec]) => {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.onclick = () => { if (tools.tm.state === 'idle') setDuration(sec * 1000); };
+  $('tPresets').appendChild(b);
+});
+function paintFill(p, c1, c2) {
+  const el = $('fillBg'), pc = (p * 100).toFixed(2);
+  if (prefs.timer.mode === 'h') el.style.background = `linear-gradient(to right, ${c2} ${pc}%, ${c1} ${pc}%)`;
+  else if (prefs.timer.mode === 'v') el.style.background = `linear-gradient(to bottom, ${c2} ${pc}%, ${c1} ${pc}%)`;
+  else if (prefs.timer.mode === 'sweep') el.style.background = `conic-gradient(${c2} ${(p * 360).toFixed(2)}deg, ${c1} ${(p * 360).toFixed(2)}deg)`;
+  else {   // 원형: 바깥에서 안쪽으로
+    const r = ((1 - p) * Math.hypot(innerWidth, innerHeight) / 2).toFixed(1);
+    el.style.background = `radial-gradient(circle at 50% 50%, ${c1} ${r}px, ${c2} ${r}px)`;
+  }
+}
+function renderTm() {
+  const t = tools.tm;
+  if (t.state === 'run' && t.endAt <= Date.now()) { t.state = 'done'; saveTools(); startAlarm(); }
+  const left = tmLeft(), idle = t.state === 'idle';
+  $('tSetter').hidden = !idle;
+  $('tDigits').hidden = idle;
+  $('tPresets').hidden = !idle;
+  if (idle) {
+    const s3 = Math.round(t.dur / 1000);
+    $('tv-h').textContent = pad(Math.floor(s3 / 3600));
+    $('tv-m').textContent = pad(Math.floor(s3 % 3600 / 60));
+    $('tv-s').textContent = pad(s3 % 60);
+  } else {
+    $('tDigits').textContent = fmtTime(left, true, t.dur >= 3600000);
+  }
+  $('pageTimer').classList.toggle('done', t.state === 'done');
+  $('tSub').textContent = t.state === 'done' ? '시간이 다 됐어요' : t.state === 'pause' ? '일시정지됨' : '';
+  $('tMain').textContent = { idle: '시작', run: '일시정지', pause: '계속', done: '끄기' }[t.state];
+  $('tMain').disabled = idle && t.dur === 0;
+  $('tReset').textContent = idle ? '지우기' : '취소';
+  $('tReset').hidden = t.state === 'done';
+  $('tReset').disabled = idle && t.dur === 0;
+
+  // 원형 시간 바: 남은 시간만큼. 한 바퀴가 전체보다 짧으면 바퀴마다 색이 번갈아
+  const total = Math.max(t.dur, 1);
+  const L = prefs.timer.lap ? prefs.timer.lap * 60000 : total;
+  const r = idle ? total : left;
+  const lap = r > 0 ? Math.ceil(r / L) - 1 : 0;
+  drawRing($('tTrack'), $('tArc'), r > 0 ? (r - lap * L) / L : 0, lap, ringColors(prefs.timer.c1, prefs.timer.c2));
+
+  // 배경 채우기 테마
+  const fill = prefs.timer.fill;
+  $('pageTimer').classList.toggle('fill', fill);
+  $('fillBg').hidden = !fill;
+  if (fill) { const [c1, c2] = fillColors(); paintFill(idle ? 0 : 1 - left / total, c1, c2); }
+  document.body.classList.toggle('on-fill', fill && page === 0);
+}
+$('tMain').onclick = () => {
+  const t = tools.tm;
+  unlockAudio();
+  if (t.state === 'idle' && t.dur > 0) { t.state = 'run'; t.endAt = Date.now() + t.dur; }
+  else if (t.state === 'run') { t.left = Math.max(0, t.endAt - Date.now()); t.state = 'pause'; }
+  else if (t.state === 'pause') { t.endAt = Date.now() + t.left; t.state = 'run'; }
+  else if (t.state === 'done') { stopAlarm(); t.state = 'idle'; }
+  saveTools(); renderTm();
+};
+$('tReset').onclick = () => {
+  const t = tools.tm;
+  if (t.state === 'idle') { setDuration(0); return; }
+  stopAlarm(); t.state = 'idle'; saveTools(); renderTm();
+};
+
+/* --- 알림 (소리 + 진동) --- */
+let audioCtx = null, alarmTimer = null;
+function unlockAudio() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+}
+function beep() {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  [0, .22, .44].forEach(d => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(0, t0 + d);
+    g.gain.linearRampToValueAtTime(.35, t0 + d + .02);
+    g.gain.exponentialRampToValueAtTime(.001, t0 + d + .18);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t0 + d); o.stop(t0 + d + .2);
+  });
+}
+function startAlarm() {
+  stopAlarm();
+  if (page !== 0) goPage(0);
+  let n = 0;
+  const ring = () => {
+    if (prefs.timer.sound) beep();
+    if (IS_APP && Android.vibrate) Android.vibrate(400); else if (navigator.vibrate) navigator.vibrate(400);
+    if (++n >= 40) stopAlarm();       // 1분쯤 울리고 멈춤
+  };
+  ring();
+  alarmTimer = setInterval(ring, 1500);
+}
+function stopAlarm() { clearInterval(alarmTimer); alarmTimer = null; }
+
+function renderTools() { renderSw(); renderTm(); }
+buildSetter();
+
+/* --- 설정: 스톱워치 · 타이머 탭 --- */
+function seg(box, options, current, onPick) {
+  box.replaceChildren();
+  options.forEach(([v, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = current === v ? 'on' : '';
+    b.setAttribute('aria-pressed', current === v);
+    b.onclick = () => onPick(v);
+    box.appendChild(b);
+  });
+}
+function autoDots(el, colors) {
+  el.replaceChildren(...colors.map(c => { const i = document.createElement('i'); i.style.background = c; return i; }));
+}
+for (let m = 5; m <= 60; m += 5) {
+  $('swLap').add(new Option(`${m}분`, m));
+}
+$('tLap').add(new Option('전체 시간', 0));
+for (let m = 5; m <= 60; m += 5) $('tLap').add(new Option(`${m}분`, m));
+$('swLap').onchange = e => { prefs.sw.lap = +e.target.value; savePrefs(); renderTools(); };
+$('tLap').onchange = e => { prefs.timer.lap = +e.target.value; savePrefs(); renderTools(); };
+$('tSound').onclick = () => { prefs.timer.sound = !prefs.timer.sound; savePrefs(); renderToolOpts(); if (prefs.timer.sound) { unlockAudio(); beep(); } };
+$('tFill').onclick = () => { prefs.timer.fill = !prefs.timer.fill; savePrefs(); renderTools(); renderToolOpts(); };
+
+function renderToolOpts() {
+  const pick = (obj, key) => (c, live) => { obj[key] = c; savePrefs(); renderTools(); if (!live) renderToolOpts(); };
+  seg($('swFmt'), [['hms', '시:분:초'], ['hm', '시:분']], prefs.sw.fmt, v => { prefs.sw.fmt = v; savePrefs(); renderTools(); renderToolOpts(); });
+  $('swLap').value = prefs.sw.lap;
+  swatchRow($('swC1'), RING_COLORS, prefs.sw.c1, pick(prefs.sw, 'c1'), true);
+  swatchRow($('swC2'), RING_COLORS, prefs.sw.c2, pick(prefs.sw, 'c2'), true);
+  const swc = ringColors(prefs.sw.c1, prefs.sw.c2);
+  autoDots($('swAuto1'), [swc[0]]); autoDots($('swAuto2'), [swc[1]]);
+
+  $('tLap').value = prefs.timer.lap;
+  swatchRow($('tC1'), RING_COLORS, prefs.timer.c1, pick(prefs.timer, 'c1'), true);
+  swatchRow($('tC2'), RING_COLORS, prefs.timer.c2, pick(prefs.timer, 'c2'), true);
+  const tc = ringColors(prefs.timer.c1, prefs.timer.c2);
+  autoDots($('tAuto1'), [tc[0]]); autoDots($('tAuto2'), [tc[1]]);
+  setToggle($('tSound'), prefs.timer.sound);
+  setToggle($('tFill'), prefs.timer.fill);
+  seg($('tMode'), [['h', '가로'], ['v', '세로'], ['sweep', '시계 방향'], ['circle', '원형 (밖→안)']], prefs.timer.mode,
+    v => { prefs.timer.mode = v; savePrefs(); renderTools(); renderToolOpts(); });
+  swatchRow($('tF1'), FILL_COLORS, prefs.timer.f1, pick(prefs.timer, 'f1'), true);
+  swatchRow($('tF2'), FILL_COLORS, prefs.timer.f2, pick(prefs.timer, 'f2'), true);
+  const fc = fillColors();
+  autoDots($('tFAuto1'), [fc[0]]); autoDots($('tFAuto2'), [fc[1]]);
+}
+
+/* ================= 옆으로 넘기기 ================= */
+let page = 1;
+const pager = $('pager');
+function goPage(i) {
+  page = Math.max(0, Math.min(2, i));
+  pager.classList.remove('dragging');
+  pager.style.transform = '';
+  pager.style.setProperty('--page', page);
+  document.querySelectorAll('#dots button').forEach(b => b.classList.toggle('on', +b.dataset.page === page));
+  document.body.classList.toggle('on-fill', prefs.timer.fill && page === 0);
+  renderTools();
+}
+document.querySelectorAll('#dots button').forEach(b => { b.onclick = () => goPage(+b.dataset.page); });
+{
+  let sx = 0, sy = 0, pid = null, dragging = false;
+  pager.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target.closest('button, input, select, a')) return;
+    sx = e.clientX; sy = e.clientY; pid = e.pointerId; dragging = false;
+  });
+  pager.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!dragging) {
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        dragging = true; pager.classList.add('dragging'); clearTimeout(pressTimer);
+        try { pager.setPointerCapture(pid); } catch (err) {}
+      } else return;
+    }
+    const off = (page === 0 && dx > 0) || (page === 2 && dx < 0) ? dx / 3 : dx;   // 끝에서는 덜 밀림
+    pager.style.transform = `translateX(calc(-100vw * ${page} + ${off}px))`;
+  });
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    pid = null;
+    if (!dragging) return;
+    dragging = false;
+    const dx = e.clientX - sx, th = Math.min(80, innerWidth * .18);
+    goPage(dx < -th ? page + 1 : dx > th ? page - 1 : page);
+  };
+  pager.addEventListener('pointerup', end);
+  pager.addEventListener('pointercancel', end);
+}
+document.addEventListener('keydown', e => {
+  if (!$('panel').hidden || e.target.closest('input, select')) return;
+  if (e.key === 'ArrowLeft') goPage(page - 1);
+  if (e.key === 'ArrowRight') goPage(page + 1);
+});
+setInterval(() => { if (page !== 1 || tools.sw.running || tools.tm.state === 'run') renderTools(); }, 200);
+
 /* ---------- 시작 ---------- */
 applyFont();
+goPage(1);
 applyTheme();
 applyLayout();
 tick();
