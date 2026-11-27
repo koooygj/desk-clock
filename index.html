@@ -1364,7 +1364,7 @@ function drawRing(track, arc, frac, lap, colors) {
   track.style.stroke = prev;
   arc.style.stroke = cur;
   const v = Math.max(0, Math.min(1, frac)) * 100;
-  arc.setAttribute('stroke-dasharray', `${v.toFixed(2)} 100`);
+  arc.setAttribute('stroke-dasharray', `${v.toFixed(3)} 100`);
   arc.style.visibility = v < .3 ? 'hidden' : '';
 }
 const fmtTime = (ms, withSec, forceHours) => {
@@ -1380,11 +1380,15 @@ let tools = { sw: { running: false, startAt: 0, acc: 0 }, tm: { state: 'idle', d
 try { const t = JSON.parse(localStorage.getItem(TOOLS_KEY)); if (t && t.sw && t.tm) tools = t; } catch (e) {}
 const saveTools = () => { try { localStorage.setItem(TOOLS_KEY, JSON.stringify(tools)); } catch (e) {} };
 
+// 글자가 바뀔 때만 다시 그림 (매 프레임 갱신하므로)
+const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+
 /* --- 스톱워치 --- */
 const swElapsed = () => tools.sw.acc + (tools.sw.running ? Date.now() - tools.sw.startAt : 0);
 function renderSw() {
   const e = swElapsed(), hm = prefs.sw.fmt === 'hm';
-  $('sDigits').textContent = hm ? fmtTime(e + 999, false) : fmtTime(e + 999, true, true);
+  const shown = Math.floor(e / 1000) * 1000;           // 지난 초만 표시 (0초부터 시작)
+  setText($('sDigits'), hm ? fmtTime(shown, false) : fmtTime(shown, true, true));
   $('sDigits').classList.toggle('big', hm);
   const L = prefs.sw.lap * 60000, lap = Math.floor(e / L);
   drawRing($('sTrack'), $('sArc'), (e - lap * L) / L, lap, ringColors(prefs.sw.c1, prefs.sw.c2));
@@ -1473,7 +1477,7 @@ function renderTm() {
     $('tv-m').textContent = pad(Math.floor(s3 % 3600 / 60));
     $('tv-s').textContent = pad(s3 % 60);
   } else {
-    $('tDigits').textContent = fmtTime(left, true, t.dur >= 3600000);
+    setText($('tDigits'), fmtTime(left, true, t.dur >= 3600000));
   }
   $('pageTimer').classList.toggle('done', t.state === 'done');
   $('tSub').textContent = t.state === 'done' ? '시간이 다 됐어요' : t.state === 'pause' ? '일시정지됨' : '';
@@ -1644,7 +1648,18 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') goPage(page - 1);
   if (e.key === 'ArrowRight') goPage(page + 1);
 });
-setInterval(() => { if (page !== 1 || tools.sw.running || tools.tm.state === 'run') renderTools(); }, 200);
+// 시간 바·배경 채우기는 화면 새로고침마다(초당 약 60번) 그려서 부드럽게.
+// 시계 화면에 있을 때는 타이머 끝났는지 확인만 가끔.
+let lastSlow = 0;
+function frame(now) {
+  const onTool = page !== 1 || pager.classList.contains('dragging');
+  if (document.visibilityState === 'visible') {
+    if (onTool) renderTools();
+    else if ((tools.sw.running || tools.tm.state === 'run') && now - lastSlow > 500) { lastSlow = now; renderTools(); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 
 /* ---------- 시작 ---------- */
 applyFont();
